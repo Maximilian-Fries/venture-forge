@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, Flame, ArrowUpRight } from "lucide-react";
+import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -49,9 +50,14 @@ export default function Dashboard() {
         if (error) console.warn("[Dashboard] Supabase error:", error.message);
 
         const localData = getLocalProjects();
+        // Only show local projects that are NOT in supabase (prevent duplicates if ID matches)
+        // Ideally we should merge, but for now just appending.
+        const supabaseIds = new Set((supabaseData || []).map(p => p.id));
+        const uniqueLocalData = localData.filter(p => !supabaseIds.has(p.id));
+
         const allProjects = [
           ...(supabaseData || []),
-          ...localData,
+          ...uniqueLocalData,
         ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
         if (allProjects.length === 0) {
@@ -78,6 +84,66 @@ export default function Dashboard() {
 
     loadProjects();
   }, []);
+
+  const handleSyncToCloud = async () => {
+    const localProjects = getLocalProjects();
+    if (localProjects.length === 0) {
+      toast.info("No local projects to sync.");
+      return;
+    }
+
+    const toastId = toast.loading("Syncing local projects to Supabase...");
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const project of localProjects) {
+      try {
+        // We must generate a NEW UUID for Supabase if the local one is "local-..."
+        // If it's already a UUID, we can try to upsert it.
+        const isLocalId = project.id.startsWith('local-');
+
+        let projectToInsert = { ...project };
+
+        // Remove local-specific fields if any, or remap ID
+        // Generally Supabase expects a UUID. 'local-123' is not valid UUID.
+        // So we strip the ID to let Supabase generate one, OR we generate a valid UUID.
+        // Stripping ID is safer, but then we lose the link to the local one.
+        // Strategy: Create NEW project in Supabase, then delete local one? 
+        // Or just keep both for now to be safe. We will insert as NEW copy.
+
+        const { id, ...projectData } = projectToInsert;
+
+        const { error } = await (supabase
+          .from('project_manifests') as any)
+          .insert({
+            ...projectData,
+            // If user_id was 'local' or 'anonymous', try to use current user
+            user_id: (await supabase.auth.getUser()).data.user?.id || 'anonymous'
+          });
+
+        if (error) {
+          console.error(`Failed to sync project ${project.title}:`, error);
+          failCount++;
+        } else {
+          successCount++;
+        }
+      } catch (e) {
+        console.error(`Failed to sync project ${project.title}:`, e);
+        failCount++;
+      }
+    }
+
+    toast.dismiss(toastId);
+    if (successCount > 0) {
+      toast.success(`Synced ${successCount} projects to Cloud!`);
+      // Reload projects to show the new Cloud ones
+      window.location.reload();
+    } else if (failCount > 0) {
+      toast.error(`Failed to sync ${failCount} projects.`);
+    } else {
+      toast.info("Sync complete.");
+    }
+  };
 
   const handleCreateNew = () => {
     clearAnalysisStorage();
@@ -114,6 +180,15 @@ export default function Dashboard() {
           >
             <Plus className="w-4 h-4 mr-1.5" />
             New Venture
+          </Button>
+          <Button
+            onClick={handleSyncToCloud}
+            size="sm"
+            variant="outline"
+            className="ml-2 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-700"
+          >
+            <CloudUpload className="w-4 h-4 mr-1.5" />
+            Sync Local
           </Button>
         </div>
 
@@ -273,8 +348,8 @@ function VentureRow({ project, onClick }: { project: ProjectManifest; onClick: (
           <span className={cn(
             'text-sm font-semibold tabular-nums',
             project.monopoly_score >= 70 ? 'text-green-400' :
-            project.monopoly_score >= 40 ? 'text-yellow-400' :
-            'text-zinc-500'
+              project.monopoly_score >= 40 ? 'text-yellow-400' :
+                'text-zinc-500'
           )}>
             {project.monopoly_score}
           </span>
