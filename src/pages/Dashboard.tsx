@@ -39,6 +39,9 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState<VentureStatus | 'all'>('all');
   const [user, setUser] = useState<any>(null);
 
+  // Track if we have local projects to show the Sync button
+  const [hasLocalProjects, setHasLocalProjects] = useState(false);
+
   useEffect(() => {
     // Initial user check
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -63,6 +66,8 @@ export default function Dashboard() {
       if (error) console.warn("[Dashboard] Supabase error:", error.message);
 
       const localData = getLocalProjects();
+      setHasLocalProjects(localData.length > 0);
+
       const supabaseIds = new Set((supabaseData || []).map(p => p.id));
       const uniqueLocalData = localData.filter(p => !supabaseIds.has(p.id));
 
@@ -111,6 +116,7 @@ export default function Dashboard() {
     const localProjects = getLocalProjects();
     if (localProjects.length === 0) {
       toast.info("No local projects to sync.");
+      setHasLocalProjects(false);
       return;
     }
 
@@ -161,6 +167,12 @@ export default function Dashboard() {
     navigate("/new");
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    // No need to manual reload, the listener handles it (or we reload here to be sure)
+    window.location.reload();
+  };
+
   // Filter projects by status
   const filteredProjects = filterStatus === 'all'
     ? projects
@@ -174,7 +186,7 @@ export default function Dashboard() {
   }, {} as Record<VentureStatus, number>);
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="min-h-screen bg-zinc-950 flex flex-col relative">
       {/* Header */}
       <header className="border-b border-zinc-800/60 bg-zinc-950 sticky top-0 z-10">
         <div className="px-8 py-5 flex items-center justify-between">
@@ -184,45 +196,41 @@ export default function Dashboard() {
               {isUsingMocks ? "Example ventures" : `${projects.length} venture${projects.length !== 1 ? 's' : ''}`}
             </p>
           </div>
-          <Button
-            onClick={handleCreateNew}
-            size="sm"
-            className="bg-white text-zinc-950 hover:bg-zinc-200 font-medium"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            New Venture
-          </Button>
-          <Button
-            onClick={handleSyncToCloud}
-            size="sm"
-            variant="outline"
-            className="ml-2 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-700"
-          >
-            <CloudUpload className="w-4 h-4 mr-1.5" />
-            Sync Local
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleCreateNew}
+              size="sm"
+              className="bg-white text-zinc-950 hover:bg-zinc-200 font-medium"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              New Venture
+            </Button>
 
-          {user ? (
-            <Button
-              onClick={() => supabase.auth.signOut()}
-              size="sm"
-              variant="ghost"
-              className="ml-2 text-zinc-400 hover:text-white"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={() => navigate("/auth")}
-              size="sm"
-              variant="default"
-              className="ml-2 bg-blue-600 hover:bg-blue-700 text-white border-none"
-            >
-              <LogIn className="w-4 h-4 mr-1.5" />
-              Log In
-            </Button>
-          )}
+            {/* Sync button only shows if we have local projects AND we are logged in (or if we want to prompt login) */}
+            {hasLocalProjects && user && (
+              <Button
+                onClick={handleSyncToCloud}
+                size="sm"
+                variant="outline"
+                className="bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-700 animate-pulse"
+              >
+                <CloudUpload className="w-4 h-4 mr-1.5" />
+                Sync Local
+              </Button>
+            )}
+
+            {!user && (
+              <Button
+                onClick={() => navigate("/auth")}
+                size="sm"
+                variant="default"
+                className="ml-2 bg-blue-600 hover:bg-blue-700 text-white border-none"
+              >
+                <LogIn className="w-4 h-4 mr-1.5" />
+                Log In
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Status Filters */}
@@ -270,7 +278,7 @@ export default function Dashboard() {
 
       {/* Project List */}
       {!isLoading && (
-        <div className="flex-1">
+        <div className="flex-1 pb-20"> {/* pb-20 for bottom button space */}
           {filteredProjects.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 px-8">
               <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center mb-4">
@@ -293,6 +301,21 @@ export default function Dashboard() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Floating Logout Button (Bottom Right) */}
+      {user && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <Button
+            onClick={handleSignOut}
+            size="sm"
+            variant="secondary"
+            className="bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 shadow-lg border border-zinc-700/50"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
       )}
     </div>
