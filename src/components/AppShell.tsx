@@ -150,10 +150,10 @@ export function AppShell({ children }: AppShellProps) {
         )}
       >
         {/* Logo / Header */}
-        <div className="flex items-center gap-2 p-3 border-b border-zinc-800/60">
+        <div className="flex items-center justify-between p-3 border-b border-zinc-800/60">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0"
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center shrink-0">
               <Flame className="w-4 h-4 text-white" />
@@ -162,22 +162,13 @@ export function AppShell({ children }: AppShellProps) {
               <span className="font-semibold text-sm text-foreground truncate">Venture Forge</span>
             )}
           </button>
-          {!sidebarCollapsed && (
-            <button
-              onClick={() => setSidebarCollapsed(true)}
-              className="ml-auto text-zinc-500 hover:text-zinc-300 p-1"
-            >
-              <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-            </button>
-          )}
-          {sidebarCollapsed && (
-            <button
-              onClick={() => setSidebarCollapsed(false)}
-              className="ml-auto text-zinc-500 hover:text-zinc-300 p-1"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="text-zinc-500 hover:text-zinc-300 p-1 shrink-0"
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", !sidebarCollapsed && "rotate-180")} />
+          </button>
         </div>
 
         {/* Quick Search */}

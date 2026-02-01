@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload, LogOut } from "lucide-react";
+import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -152,13 +152,6 @@ export default function Dashboard() {
     navigate("/new");
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    // Redirect handled by ProtectedRoute -> /auth
-    // But forcing reload can help clear state
-    window.location.reload();
-  };
-
   // Filter projects by status
   const filteredProjects = filterStatus === 'all'
     ? projects
@@ -278,19 +271,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Floating Logout Button (Bottom LEFT) */}
-      <div className="fixed bottom-6 left-6 z-50">
-        <Button
-          onClick={handleSignOut}
-          size="sm"
-          variant="ghost"
-          className="text-zinc-500 hover:text-white hover:bg-zinc-800"
-          title="Sign Out"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Sign Out
-        </Button>
-      </div>
     </div>
   );
 }
