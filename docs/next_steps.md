@@ -438,3 +438,38 @@ export async function getPrompt(name: string, fallback: string): Promise<string>
 ### 3. Data Integrity
 - **Persistence**: Ensure that the partial data (e.g., the failed proposal, the Gap Report content if possible, or at least the fact that it failed) is saved.
 - **Hypothesis**: The "Hypothesis" (user's input) for the failed lens should be preserved in `manifest.gauntlet_lenses[id].userEdit` so it shows up in the dossier.
+
+---
+
+# 24. Robust Authentication & Route Guarding
+**Goal**: Secure the entire application, not just the Dashboard. Ensure users cannot access `/forge`, `/gauntlet`, or `/projects` without being authenticated.
+
+## Problem
+Currently, only `Dashboard.tsx` checks for a user session. A user can bypass the login screen by navigating directly to `/new` or an existing project URL.
+
+## Proposed Solution: Global Route Guarding
+
+### 1. Create `ProtectedRoute` Component
+- **Path**: `src/components/ProtectedRoute.tsx`
+- **Logic**:
+    - Check Supabase auth state (`useSession` or `auth.getUser`).
+    - **Loading State**: Show a full-screen loader while checking session.
+    - **Unauthenticated**: Redirect to `/auth` (or render the Login Screen inline).
+    - **Authenticated**: Render the `children` (the protected page).
+
+### 2. Refactor `App.tsx`
+- Wrap all sensitive routes in `<ProtectedRoute>`:
+    ```tsx
+    <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+    <Route path="/new" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
+    <Route path="/forge/:id" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
+    // ... all other protected routes
+    ```
+- Leave `/auth` public.
+
+### 3. Simplify `Dashboard.tsx`
+- Remove the "Inline Login" logic from `Dashboard.tsx`. It should assume it IS authenticated if it is rendered (because of the wrapper).
+- Keep the Logout button.
+
+### 4. Optimize `AppShell`
+- Ensure the Sidebar/Navigation is also aware of Auth state (e.g., hide sidebar items if not logged in, though `ProtectedRoute` handles the redirect anyway).

@@ -11,6 +11,7 @@ import Gauntlet from "./pages/Gauntlet";
 import ProjectDetails from "./pages/ProjectDetails";
 import NotFound from "./pages/NotFound";
 import { AppShell } from "./components/AppShell";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -22,14 +23,18 @@ const App = () => (
       <BrowserRouter>
         <AppShell>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            {/* Public route - Auth page */}
             <Route path="/auth" element={<Auth />} />
+
+            {/* Protected routes - require authentication */}
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
-            <Route path="/new" element={<Forge />} />
-            <Route path="/forge/:id" element={<Forge />} />
-            <Route path="/gauntlet/:id" element={<Gauntlet />} />
-            <Route path="/analyze/:projectId" element={<NewIdea />} />
-            <Route path="/projects/:id" element={<ProjectDetails />} />
+            <Route path="/new" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
+            <Route path="/forge/:id" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
+            <Route path="/gauntlet/:id" element={<ProtectedRoute><Gauntlet /></ProtectedRoute>} />
+            <Route path="/analyze/:projectId" element={<ProtectedRoute><NewIdea /></ProtectedRoute>} />
+            <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetails /></ProtectedRoute>} />
+
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

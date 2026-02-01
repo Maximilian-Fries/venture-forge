@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Loader2, Flame, ChevronRight, Sparkles } from 'lucide-react';
+import { Plus, Search, Loader2, Flame, ChevronRight, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { getLocalProjects, isMockProject } from '@/hooks/useProjectManifest';
@@ -112,8 +112,21 @@ export function AppShell({ children }: AppShellProps) {
     navigate('/new');
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/auth');
+  };
+
   // Extract current project ID from URL
   const currentProjectId = location.pathname.match(/\/(projects|analyze|forge|gauntlet)\/(.+)/)?.[2];
+
+  // Check if we're on a public route that shouldn't show the sidebar
+  const isPublicRoute = location.pathname === '/auth';
+
+  // For public routes (like /auth), render children without the shell
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
 
   // Determine the best route for a project based on its status
   const getProjectRoute = (project: ProjectManifest): string => {
@@ -160,7 +173,7 @@ export function AppShell({ children }: AppShellProps) {
           {sidebarCollapsed && (
             <button
               onClick={() => setSidebarCollapsed(false)}
-              className="absolute left-14 top-3 text-zinc-500 hover:text-zinc-300 p-1 opacity-0 hover:opacity-100 transition-opacity"
+              className="ml-auto text-zinc-500 hover:text-zinc-300 p-1"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -250,14 +263,20 @@ export function AppShell({ children }: AppShellProps) {
           )}
         </div>
 
-        {/* Footer */}
-        {!sidebarCollapsed && (
-          <div className="p-3 border-t border-zinc-800/60">
-            <p className="text-[10px] text-zinc-600 text-center">
-              {projects.length} venture{projects.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        )}
+        {/* Footer - Sign Out */}
+        <div className="p-2 border-t border-zinc-800/60">
+          <button
+            onClick={handleSignOut}
+            className={cn(
+              'flex items-center gap-2 w-full rounded-lg transition-colors text-sm text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800',
+              sidebarCollapsed ? 'justify-center p-2' : 'px-3 py-1.5'
+            )}
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && <span>Sign Out</span>}
+          </button>
+        </div>
       </aside>
 
       {/* Main content */}
