@@ -86,6 +86,14 @@ export default function Dashboard() {
   }, []);
 
   const handleSyncToCloud = async () => {
+    // Check if user is logged in
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      toast.error("You must be logged in to sync projects.");
+      return;
+    }
+
     const localProjects = getLocalProjects();
     if (localProjects.length === 0) {
       toast.info("No local projects to sync.");
@@ -98,27 +106,14 @@ export default function Dashboard() {
 
     for (const project of localProjects) {
       try {
-        // We must generate a NEW UUID for Supabase if the local one is "local-..."
-        // If it's already a UUID, we can try to upsert it.
-        const isLocalId = project.id.startsWith('local-');
-
         let projectToInsert = { ...project };
-
-        // Remove local-specific fields if any, or remap ID
-        // Generally Supabase expects a UUID. 'local-123' is not valid UUID.
-        // So we strip the ID to let Supabase generate one, OR we generate a valid UUID.
-        // Stripping ID is safer, but then we lose the link to the local one.
-        // Strategy: Create NEW project in Supabase, then delete local one? 
-        // Or just keep both for now to be safe. We will insert as NEW copy.
-
         const { id, ...projectData } = projectToInsert;
 
         const { error } = await (supabase
           .from('project_manifests') as any)
           .insert({
             ...projectData,
-            // If user_id was 'local' or 'anonymous', try to use current user
-            user_id: (await supabase.auth.getUser()).data.user?.id || 'anonymous'
+            user_id: user.id
           });
 
         if (error) {
@@ -139,7 +134,7 @@ export default function Dashboard() {
       // Reload projects to show the new Cloud ones
       window.location.reload();
     } else if (failCount > 0) {
-      toast.error(`Failed to sync ${failCount} projects.`);
+      toast.error(`Failed to sync ${failCount} projects. Check console.`);
     } else {
       toast.info("Sync complete.");
     }
