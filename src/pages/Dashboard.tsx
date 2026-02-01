@@ -40,67 +40,64 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
+    // Initial user check
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
-        // Reload projects if auth changes to switch between local/cloud view properly?
-        // Actually, let's just reload the page to be safe and clean.
-        window.location.reload();
-      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    async function loadProjects() {
-      setIsLoading(true);
-      try {
-        const { data: supabaseData, error } = await supabase
-          .from("project_manifests")
-          .select("*")
-          .order("updated_at", { ascending: false });
+  // Isolate data loading
+  const loadProjects = async () => {
+    setIsLoading(true);
+    try {
+      const { data: supabaseData, error } = await supabase
+        .from("project_manifests")
+        .select("*")
+        .order("updated_at", { ascending: false });
 
-        if (error) console.warn("[Dashboard] Supabase error:", error.message);
+      if (error) console.warn("[Dashboard] Supabase error:", error.message);
 
-        const localData = getLocalProjects();
-        // Only show local projects that are NOT in supabase (prevent duplicates if ID matches)
-        // Ideally we should merge, but for now just appending.
-        const supabaseIds = new Set((supabaseData || []).map(p => p.id));
-        const uniqueLocalData = localData.filter(p => !supabaseIds.has(p.id));
+      const localData = getLocalProjects();
+      const supabaseIds = new Set((supabaseData || []).map(p => p.id));
+      const uniqueLocalData = localData.filter(p => !supabaseIds.has(p.id));
 
-        const allProjects = [
-          ...(supabaseData || []),
-          ...uniqueLocalData,
-        ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      const allProjects = [
+        ...(supabaseData || []),
+        ...uniqueLocalData,
+      ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
-        if (allProjects.length === 0) {
-          setProjects(MOCK_VENTURES as unknown as ProjectManifest[]);
-          setIsUsingMocks(true);
-        } else {
-          setProjects(allProjects as ProjectManifest[]);
-          setIsUsingMocks(false);
-        }
-      } catch (err) {
-        console.error("[Dashboard] Failed to load projects:", err);
-        const localData = getLocalProjects();
-        if (localData.length > 0) {
-          setProjects(localData);
-          setIsUsingMocks(false);
-        } else {
-          setProjects(MOCK_VENTURES as unknown as ProjectManifest[]);
-          setIsUsingMocks(true);
-        }
-      } finally {
-        setIsLoading(false);
+      if (allProjects.length === 0) {
+        setProjects(MOCK_VENTURES as unknown as ProjectManifest[]);
+        setIsUsingMocks(true);
+      } else {
+        setProjects(allProjects as ProjectManifest[]);
+        setIsUsingMocks(false);
       }
+    } catch (err) {
+      console.error("[Dashboard] Failed to load projects:", err);
+      // Fallback logic
+      const localData = getLocalProjects();
+      if (localData.length > 0) {
+        setProjects(localData);
+        setIsUsingMocks(false);
+      } else {
+        setProjects(MOCK_VENTURES as unknown as ProjectManifest[]);
+        setIsUsingMocks(true);
+      }
+    } finally {
+      setIsLoading(false);
     }
+  };
 
+  // Reload projects whenever user changes (login/logout)
+  useEffect(() => {
     loadProjects();
-  }, []);
+  }, [user]);
 
   const handleSyncToCloud = async () => {
     // Check if user is logged in
