@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload } from "lucide-react";
+import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload, LogIn, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -37,6 +37,23 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingMocks, setIsUsingMocks] = useState(false);
   const [filterStatus, setFilterStatus] = useState<VentureStatus | 'all'>('all');
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+        // Reload projects if auth changes to switch between local/cloud view properly?
+        // Actually, let's just reload the page to be safe and clean.
+        window.location.reload();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     async function loadProjects() {
@@ -185,6 +202,28 @@ export default function Dashboard() {
             <CloudUpload className="w-4 h-4 mr-1.5" />
             Sync Local
           </Button>
+
+          {user ? (
+            <Button
+              onClick={() => supabase.auth.signOut()}
+              size="sm"
+              variant="ghost"
+              className="ml-2 text-zinc-400 hover:text-white"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={() => navigate("/auth")}
+              size="sm"
+              variant="default"
+              className="ml-2 bg-blue-600 hover:bg-blue-700 text-white border-none"
+            >
+              <LogIn className="w-4 h-4 mr-1.5" />
+              Log In
+            </Button>
+          )}
         </div>
 
         {/* Status Filters */}

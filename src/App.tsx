@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Auth from "./pages/Auth";
 import NewIdea from "./pages/NewIdea";
 import Dashboard from "./pages/Dashboard";
 import Forge from "./pages/Forge";
@@ -22,6 +23,7 @@ const App = () => (
         <AppShell>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/new" element={<Forge />} />
             <Route path="/forge/:id" element={<Forge />} />
