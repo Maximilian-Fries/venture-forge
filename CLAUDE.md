@@ -46,12 +46,12 @@ Defined in `src/lib/prompts.ts`:
 
 ### Analysis Flow
 1. **Pitch Phase**: User enters idea (`NewIdea.tsx`)
-2. **Wizard Phase**: 5-lens analysis (Problem Depth, Engineering Moat, The Secret, Timing, Monopoly Wedge) with Visionary vs Skeptic debates (`LensWizard.tsx`)
+2. **Wizard Phase**: 7-lens analysis (Engineering, Timing, Monopoly, People, Distribution, Durability, Secrets) with Visionary vs Skeptic debates (`LensWizard.tsx`)
 3. **Validation Phase**: Investigator generates Mom Test questions (`MomTestLab.tsx`)
 4. **Complete Phase**: Final Monopoly Score and Contrarian Index
 
 ### Key Components
-- `LensWizard`: Multi-step wizard managing the 5-lens debate flow
+- `LensWizard`: Multi-step wizard managing the 7-lens debate flow
 - `DebatePanel`: Side-by-side Visionary vs Skeptic output
 - `ConflictToggle`: User votes on debate winner (affects scoring)
 - `MomTestLab`: Customer validation question generator

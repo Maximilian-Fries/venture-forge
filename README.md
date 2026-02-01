@@ -1,73 +1,111 @@
-# Welcome to your Lovable project
+# MonopolyMap
 
-## Project info
+**An Adversarial Venture Architect for Zero-to-One Ideas.**
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+MonopolyMap is not a "helpful assistant." It is a ruthless, adversarial **Venture Jury** designed to move entrepreneurs from "1 to N" (incremental progress) to "0 to 1" (vertical innovation). It acts as a filter for startup ideas, forcing them to meet the high reliability bars set by Peter Thiel (*Zero to One*) and Rob Fitzpatrick (*The Mom Test*).
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 🧠 Core Philosophy
 
-**Use Lovable**
+Most startup ideas fail because they are "nice to have," "feature improvements," or solutions looking for a problem. MonopolyMap prevents this by enforcing:
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+1.  **The Secret (Zero to One)**: We don't want to build "Uber for X." We seek monopolies built on proprietary technology, network effects, economies of scale, and branding.
+2.  **The Mom Test (Validation)**: We never ask "Would you use this?" We only care about past behavior. We hunt for "Bad Data" (compliments, fluff, hypotheticals) and eliminate it.
+3.  **The Wedge**: Start with a small, specific market and dominate it completely before expanding.
 
-Changes made via Lovable will be committed automatically to this repo.
+## 👥 The Venture Jury (Multi-Agent System)
 
-**Use your preferred IDE**
+Instead of a single AI, your idea faces a panel of specialized agents:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+*   **🔭 The Visionary**: Optimistic. Looks for the 10x potential, the "Secret," and the path to global scale. (Based on Peter Thiel/Marc Andreessen).
+*   **🛡️ The Skeptic**: Ruthless. Looks for hidden incumbents, physics constraints, timing traps, and market apathy. (Based on Short-Sellers).
+*   **🕵️ The Investigator**: Empirical. Applies "The Mom Test" to question assumptions and demand evidence of past customer behavior.
+*   **⚖️ The General Partner (GP)**: The Decider. Synthesizes the debate into a final "Monopoly Score" and investment memo.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 🔍 The Five Strategic Lenses
 
-Follow these steps:
+Every venture is analyzed through five critical lenses. If you fail one, you don't pass Go.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+| Lens | The Critical Question | Success Criteria |
+| :--- | :--- | :--- |
+| **Engineering** | Can you create breakthrough technology, not just incremental improvements? | Proprietary tech vs. Wrapper/Service business. |
+| **Timing** | Why now? Is now the right time to start this particular company? | Specific macro catalyst vs. General Trend. |
+| **Monopoly** | Can you dominate a market so small that every participant is identifiable? | Focused "Pond" vs. Broad "Ocean". |
+| **People** | Do you have the right team with unique founder-market fit? | Credentials/skills vs. Generic passion. |
+| **Distribution** | Do you have a way to deliver your product, not just create it? | Viral/Owned distribution vs. Rented/Paid ads. |
+| **Durability** | Will your market position be defensible 10-20 years into the future? | Network effects/Scaling vs. First Mover Advantage. |
+| **Secrets** | Have you identified a unique opportunity that others don't see? | Contrarian insight vs. Conventional wisdom. |
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+---
 
-# Step 3: Install the necessary dependencies.
-npm i
+## 🛠️ Technology Stack
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+MonopolyMap is a modern, high-performance web application built with:
 
-**Edit a file directly in GitHub**
+*   **Framework**: [React](https://react.dev/) + [Vite](https://vitejs.dev/)
+*   **Language**: [TypeScript](https://www.typescriptlang.org/)
+*   **UI System**: [Shadcn/ui](https://ui.shadcn.com/) + [Tailwind CSS](https://tailwindcss.com/)
+*   **State Management**: [Zustand](https://github.com/pmndrs/zustand) + [TanStack Query](https://tanstack.com/query/latest)
+*   **Backend/Database**: [Supabase](https://supabase.com/)
+*   **AI Orchestration**: [LangChain](https://js.langchain.com/docs/) + [Gemini 1.5 Pro](https://deepmind.google/technologies/gemini/)
+*   **Observability**: [Langfuse](https://langfuse.com/) (Prompt Management & Tracing)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 🚀 Getting Started
 
-**Use GitHub Codespaces**
+### Prerequisites
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+*   Node.js & npm (or bun/yarn)
+*   A Supabase project (for database)
+*   Google Gemini API Key
+*   Langfuse details (optional, for tracing)
 
-## What technologies are used for this project?
+### Installation
 
-This project is built with:
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/Maximilian-Fries/venture-forge.git
+    cd venture-forge
+    ```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+2.  **Install dependencies**
+    ```bash
+    npm install
+    ```
 
-## How can I deploy this project?
+3.  **Configure Environment**
+    Create a `.env` file in the root directory:
+    ```env
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    VITE_GEMINI_API_KEY=your_gemini_key
+    # Optional
+    VITE_LANGFUSE_PUBLIC_KEY=...
+    VITE_LANGFUSE_HOST=...
+    ```
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+4.  **Run Development Server**
+    ```bash
+    npm run dev
+    ```
 
-## Can I connect a custom domain to my Lovable project?
+## 📂 Project Structure
 
-Yes, you can!
+*   `src/lib/agents/`: Definitions for the Venture Jury agents (Visionary, Skeptic, etc.).
+*   `src/components/LensWizard.tsx`: The core "Gauntlet" flow where users interact with the agents.
+*   `src/types/`: TypeScript definitions for the "Venture Manifest" (the central state object).
+*   `docs/`: Detailed architectural documentation (RFCs, Prompt Management).
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## 🤝 Contributing
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+We welcome contributions that make the Skeptic more ruthless or the Visionary more insightful.
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+---
+
+*Built with ❤️ (and skepticism) by Venture Forge.*

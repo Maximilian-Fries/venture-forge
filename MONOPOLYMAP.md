@@ -14,11 +14,13 @@ Every project in MonopolyMap must be evaluated through these five specific lense
 
 | Lens | The AI's Critical Question | Success Criteria |
 | :--- | :--- | :--- |
-| **Engineering** | Is this a 10x breakthrough or 10% better? | Proprietary tech that is significantly better than substitutes. |
-| **Timing** | Why now? What changed in the last 12-24 months? | Identification of a specific macro catalyst (Tech/Reg/Social). |
-| **Monopoly** | Can you own 80% of a tiny, specific niche? | A "Wedge" strategy that avoids broad competition. |
-| **Distribution** | How will you sell this without a massive ad budget? | Viral loops, complex sales, or built-in distribution moats. |
-| **The Secret** | What important truth do very few people agree with? | A contrarian insight that others have missed. |
+| **Engineering** | Can you create breakthrough technology, not just incremental improvements? | Proprietary tech that is 10x better than substitutes. |
+| **Timing** | Why now? Is now the right time to start this particular company? | Specific macro catalyst (Tech/Reg/Social) vs. General Trend. |
+| **Monopoly** | Can you dominate a market so small that every participant is identifiable? | A "Wedge" strategy that avoids broad competition. |
+| **People** | Do you have the right team with unique founder-market fit? | Credentials/skills specifically relevant to *this* wedge. |
+| **Distribution** | Do you have a way to deliver your product, not just create it? | Viral loops, complex sales, or built-in distribution moats. |
+| **Durability** | Will your market position be defensible 10-20 years into the future? | Network effects, economies of scale, or branding. high switching costs. |
+| **Secrets** | Have you identified a unique opportunity that others don't see? | A contrarian insight that others have missed. |
 
 ---
 
