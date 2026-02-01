@@ -134,6 +134,8 @@ export default function Dashboard() {
           console.error(`Failed to sync project ${project.title}:`, error);
           failCount++;
         } else {
+          // Success! Remove local copy to prevent duplication
+          removeLocalProject(project.id);
           successCount++;
         }
       } catch (e) {
