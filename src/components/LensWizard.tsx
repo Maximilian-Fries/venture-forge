@@ -6,6 +6,7 @@ import { DebatePanel } from "./DebatePanel";
 import { ConflictToggle } from "./ConflictToggle";
 import { LENS_TYPES, type LensType } from "@/lib/prompts";
 import { cn } from "@/lib/utils";
+import { generateVisionaryDebate, generateSkepticDebate } from "@/lib/agents/lens-specialists";
 
 interface LensData {
   userInput: string;
@@ -45,30 +46,48 @@ export function LensWizard({ onComplete }: LensWizardProps) {
     if (!currentData.userInput.trim()) return;
 
     setIsGenerating(true);
-    
-    // Simulate AI generation - in production this would call the AI
-    setLoadingAgent("visionary");
-    await new Promise((r) => setTimeout(r, 1500));
-    
-    const mockVisionary = `**Contrarian Thesis**: This approach to ${currentLens.name.toLowerCase()} represents a genuine "0 to 1" opportunity.\n\n1. **Unique Insight**: The founder sees something others miss - this isn't incremental improvement but category creation.\n\n2. **Timing Advantage**: Market conditions have shifted, creating a window that larger players are too slow to exploit.\n\n3. **Compounding Moat**: Early market dominance in this wedge creates defensibility through network effects and switching costs.`;
 
-    setLensData((prev) => ({
-      ...prev,
-      [currentLens.id]: { ...prev[currentLens.id], visionaryOutput: mockVisionary },
-    }));
+    try {
+      // Generate Visionary perspective
+      setLoadingAgent("visionary");
+      const visionaryResponse = await generateVisionaryDebate(
+        currentLens.id,
+        currentLens.name,
+        currentData.userInput
+      );
 
-    setLoadingAgent("skeptic");
-    await new Promise((r) => setTimeout(r, 1200));
+      setLensData((prev) => ({
+        ...prev,
+        [currentLens.id]: { ...prev[currentLens.id], visionaryOutput: visionaryResponse },
+      }));
 
-    const mockSkeptic = `**Red Flags Identified:**\n\n🚩 **High** - Hidden Incumbent Risk: Larger players could pivot into this space with existing resources and distribution.\n\n🚩 **Medium** - Timing Trap: The "why now" thesis may be wishful thinking rather than structural change.\n\n🚩 **Low** - Defensibility Gap: The moat described may be narrower than presented.`;
+      // Generate Skeptic perspective
+      setLoadingAgent("skeptic");
+      const skepticResponse = await generateSkepticDebate(
+        currentLens.id,
+        currentLens.name,
+        currentData.userInput
+      );
 
-    setLensData((prev) => ({
-      ...prev,
-      [currentLens.id]: { ...prev[currentLens.id], skepticOutput: mockSkeptic },
-    }));
-
-    setLoadingAgent(null);
-    setIsGenerating(false);
+      setLensData((prev) => ({
+        ...prev,
+        [currentLens.id]: { ...prev[currentLens.id], skepticOutput: skepticResponse },
+      }));
+    } catch (error) {
+      console.error('Debate generation error:', error);
+      // Set error messages
+      setLensData((prev) => ({
+        ...prev,
+        [currentLens.id]: {
+          ...prev[currentLens.id],
+          visionaryOutput: prev[currentLens.id].visionaryOutput || "Failed to generate Visionary analysis. Please try again.",
+          skepticOutput: prev[currentLens.id].skepticOutput || "Failed to generate Skeptic analysis. Please try again.",
+        },
+      }));
+    } finally {
+      setLoadingAgent(null);
+      setIsGenerating(false);
+    }
   };
 
   const handleChoice = (choice: "visionary" | "skeptic" | null) => {
