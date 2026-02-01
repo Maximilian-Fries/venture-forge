@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload, LogIn, LogOut } from "lucide-react";
+import { Plus, Loader2, Flame, ArrowUpRight, CloudUpload, LogOut, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { getVentureStatus, VENTURE_STATUS_CONFIG, type ProjectManifest, type VentureStatus } from "@/types/database";
@@ -39,6 +42,12 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState<VentureStatus | 'all'>('all');
   const [user, setUser] = useState<any>(null);
 
+  // Auth State for inline login
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   // Track if we have local projects to show the Sync button
   const [hasLocalProjects, setHasLocalProjects] = useState(false);
 
@@ -49,6 +58,10 @@ export default function Dashboard() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (_event === 'SIGNED_IN') {
+        // window.location.reload(); // Can reload to be fresh
+        loadProjects(); // Or just load data
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -101,7 +114,7 @@ export default function Dashboard() {
 
   // Reload projects whenever user changes (login/logout)
   useEffect(() => {
-    loadProjects();
+    if (user) loadProjects();
   }, [user]);
 
   const handleSyncToCloud = async () => {
@@ -169,22 +182,116 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    // No need to manual reload, the listener handles it (or we reload here to be sure)
     window.location.reload();
   };
 
-  // Filter projects by status
-  const filteredProjects = filterStatus === 'all'
-    ? projects
-    : projects.filter(p => getVentureStatus(p) === filterStatus);
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
 
-  // Group counts
-  const statusCounts = projects.reduce((acc, p) => {
-    const status = getVentureStatus(p);
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {} as Record<VentureStatus, number>);
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        toast.success("Account created! You can now log in.");
+        setIsSignUp(false); // Switch to login view
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        toast.success("Welcome back!");
+        // User state will update automatically via listener
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Authentication failed");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
 
+  // --- RENDER ---
+
+  // 1. If not logged in, show Minimalistic Login Screen
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 text-zinc-100 shadow-2xl">
+          <CardHeader>
+            <CardTitle className="text-2xl text-center">
+              {isSignUp ? "Venture Forge" : "Venture Forge"}
+            </CardTitle>
+            <CardDescription className="text-center text-zinc-400">
+              {isSignUp
+                ? "Create an account to start building"
+                : "Sign in to access your portfolio"}
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleAuth}>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    className="pl-9 bg-zinc-950 border-zinc-800 focus:ring-zinc-700"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    className="pl-9 bg-zinc-950 border-zinc-800 focus:ring-zinc-700"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-4">
+              <Button
+                type="submit"
+                className="w-full bg-white text-zinc-950 hover:bg-zinc-200"
+                disabled={isAuthLoading}
+              >
+                {isAuthLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSignUp ? "Sign Up" : "Sign In"}
+              </Button>
+              <p className="text-sm text-center text-zinc-500">
+                {isSignUp ? "Already have an account?" : "Don't have an account?"}
+                <button
+                  type="button"
+                  className="ml-1 text-zinc-300 hover:underline hover:text-white"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                >
+                  {isSignUp ? "Sign In" : "Sign Up"}
+                </button>
+              </p>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  // 2. If logged in, show Dashboard
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col relative">
       {/* Header */}
@@ -206,8 +313,8 @@ export default function Dashboard() {
               New Venture
             </Button>
 
-            {/* Sync button only shows if we have local projects AND we are logged in (or if we want to prompt login) */}
-            {hasLocalProjects && user && (
+            {/* Sync button only shows if we have local projects */}
+            {hasLocalProjects && (
               <Button
                 onClick={handleSyncToCloud}
                 size="sm"
@@ -216,18 +323,6 @@ export default function Dashboard() {
               >
                 <CloudUpload className="w-4 h-4 mr-1.5" />
                 Sync Local
-              </Button>
-            )}
-
-            {!user && (
-              <Button
-                onClick={() => navigate("/auth")}
-                size="sm"
-                variant="default"
-                className="ml-2 bg-blue-600 hover:bg-blue-700 text-white border-none"
-              >
-                <LogIn className="w-4 h-4 mr-1.5" />
-                Log In
               </Button>
             )}
           </div>
@@ -278,7 +373,7 @@ export default function Dashboard() {
 
       {/* Project List */}
       {!isLoading && (
-        <div className="flex-1 pb-20"> {/* pb-20 for bottom button space */}
+        <div className="flex-1 pb-20">
           {filteredProjects.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 px-8">
               <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center mb-4">
@@ -286,7 +381,7 @@ export default function Dashboard() {
               </div>
               <p className="text-zinc-500 text-sm">
                 {filterStatus === 'all'
-                  ? 'No ventures yet. Create your first one.'
+                  ? 'No ventures yet. Start creating.'
                   : `No ventures in "${filterStatus}" status.`}
               </p>
             </div>
@@ -304,20 +399,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Floating Logout Button (Bottom Right) */}
-      {user && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <Button
-            onClick={handleSignOut}
-            size="sm"
-            variant="secondary"
-            className="bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 shadow-lg border border-zinc-700/50"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
-        </div>
-      )}
+      {/* Floating Logout Button (Bottom LEFT) */}
+      <div className="fixed bottom-6 left-6 z-50">
+        <Button
+          onClick={handleSignOut}
+          size="sm"
+          variant="ghost"
+          className="text-zinc-500 hover:text-white hover:bg-zinc-800"
+          title="Sign Out"
+        >
+          <LogOut className="w-4 h-4 mr-2" />
+          Sign Out
+        </Button>
+      </div>
     </div>
   );
 }
