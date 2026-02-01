@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { getVentureStatus, VENTURE_STATUS_CONFIG, type ProjectManifest, type VentureStatus } from "@/types/database";
 import { MOCK_VENTURES } from "@/data/mockVentures";
-import { getLocalProjects, isMockProject } from "@/hooks/useProjectManifest";
+import { getLocalProjects, isMockProject, removeLocalProject } from "@/hooks/useProjectManifest";
 
 function getProjectRoute(project: ProjectManifest): string {
   const status = getVentureStatus(project);

@@ -44,6 +44,13 @@ function updateLocalProject(projectId: string, updates: Partial<ProjectManifest>
   return null;
 }
 
+// Helper to remove a local project from localStorage
+export function removeLocalProject(projectId: string) {
+  const projects = getLocalProjects();
+  const filtered = projects.filter(p => p.id !== projectId);
+  saveLocalProjects(filtered);
+}
+
 export interface ProjectManifestState {
   // Current project state
   currentProject: ProjectManifest | null;
