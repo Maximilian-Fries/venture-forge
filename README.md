@@ -1,10 +1,8 @@
 # MonopolyMap
 
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=wy_VwdY7cM0">
-    <img src="https://img.youtube.com/vi/wy_VwdY7cM0/0.jpg" alt="The penguin edit" style="width:100%;">
-  </a>
-</div>
+"But one of them caught our eye—the one in the center. He would neither go towards the feeding grounds at the edge of the ice, nor return to the colony. Shortly afterwards, we saw him heading straight towards the mountains, some 70 kilometers away.
+
+Dr. Ainley explained that even if he caught him and brought him back to the colony, he would immediately head right back for the mountains. But why?"
 
 **An Adversarial Venture Architect for Zero-to-One Ideas.**
 
