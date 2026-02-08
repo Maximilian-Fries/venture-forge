@@ -1,8 +1,14 @@
 # MonopolyMap
 
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=wy_VwdY7cM0">
+    <img src="https://img.youtube.com/vi/wy_VwdY7cM0/0.jpg" alt="The penguin edit" style="width:100%;">
+  </a>
+</div>
+
 **An Adversarial Venture Architect for Zero-to-One Ideas.**
 
-MonopolyMap is not a "helpful assistant." It is a ruthless, adversarial **Venture Jury** designed to move entrepreneurs from "1 to N" (incremental progress) to "0 to 1" (vertical innovation). It acts as a filter for startup ideas, forcing them to meet the high reliability bars set by Peter Thiel (*Zero to One*) and Rob Fitzpatrick (*The Mom Test*).
+MonopolyMap is supposed to be a ruthless, adversarial **Venture Jury** designed to move entrepreneurs from "1 to N" (incremental progress) to "0 to 1" (vertical innovation). It acts as a filter for startup ideas, forcing them to meet the high reliability bars set by Peter Thiel (*Zero to One*) and Rob Fitzpatrick (*The Mom Test*).
 
 ---
 
@@ -10,7 +16,7 @@ MonopolyMap is not a "helpful assistant." It is a ruthless, adversarial **Ventur
 
 Most startup ideas fail because they are "nice to have," "feature improvements," or solutions looking for a problem. MonopolyMap prevents this by enforcing:
 
-1.  **The Secret (Zero to One)**: We don't want to build "Uber for X." We seek monopolies built on proprietary technology, network effects, economies of scale, and branding.
+1.  **The Secret (Zero to One)**: We don't want to build "Uber for X." or Piss-Crystals. We seek monopolies built on proprietary technology, network effects, economies of scale, and branding.
 2.  **The Mom Test (Validation)**: We never ask "Would you use this?" We only care about past behavior. We hunt for "Bad Data" (compliments, fluff, hypotheticals) and eliminate it.
 3.  **The Wedge**: Start with a small, specific market and dominate it completely before expanding.
 
@@ -18,12 +24,11 @@ Most startup ideas fail because they are "nice to have," "feature improvements,"
 
 Instead of a single AI, your idea faces a panel of specialized agents:
 
-*   **🔭 The Visionary**: Optimistic. Looks for the 10x potential, the "Secret," and the path to global scale. (Based on Peter Thiel/Marc Andreessen).
-*   **🛡️ The Skeptic**: Ruthless. Looks for hidden incumbents, physics constraints, timing traps, and market apathy. (Based on Short-Sellers).
-*   **🕵️ The Investigator**: Empirical. Applies "The Mom Test" to question assumptions and demand evidence of past customer behavior.
-*   **⚖️ The General Partner (GP)**: The Decider. Synthesizes the debate into a final "Monopoly Score" and investment memo.
+*   **🔭 The Visionary**: Optimistic. Looks for the 10x potential, the "Secret," and the path to global scale. 
+*   **🛡️ The Skeptic**: Ruthless. Looks for errors, physics constraints, timing traps, and market apathy.
+*   **⚖️ The General Partner (GP) / Jury**: The Decider. Synthesizes the debate into a final "Monopoly Score" and investment memo.
 
-## 🔍 The Five Strategic Lenses
+## 🔍 The 7 Strategic Lenses
 
 Every venture is analyzed through five critical lenses. If you fail one, you don't pass Go.
 
@@ -89,21 +94,8 @@ MonopolyMap is a modern, high-performance web application built with:
     npm run dev
     ```
 
-## 📂 Project Structure
 
-*   `src/lib/agents/`: Definitions for the Venture Jury agents (Visionary, Skeptic, etc.).
-*   `src/components/LensWizard.tsx`: The core "Gauntlet" flow where users interact with the agents.
-*   `src/types/`: TypeScript definitions for the "Venture Manifest" (the central state object).
-*   `docs/`: Detailed architectural documentation (RFCs, Prompt Management).
 
-## 🤝 Contributing
-
-We welcome contributions that make the Skeptic more ruthless or the Visionary more insightful.
-
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
 5.  Open a Pull Request
 
 ---
