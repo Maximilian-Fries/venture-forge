@@ -91,11 +91,3 @@ MonopolyMap is a modern, high-performance web application built with:
     ```bash
     npm run dev
     ```
-
-
-
-5.  Open a Pull Request
-
----
-
-*Built with ❤️ (and skepticism) by Venture Forge.*
