@@ -38,7 +38,16 @@ Every venture is analyzed through five critical lenses. If you fail one, you don
 | **People** | Do you have the right team with unique founder-market fit? | Credentials/skills vs. Generic passion. |
 | **Distribution** | Do you have a way to deliver your product, not just create it? | Viral/Owned distribution vs. Rented/Paid ads. |
 | **Durability** | Will your market position be defensible 10-20 years into the future? | Network effects/Scaling vs. First Mover Advantage. |
+
 | **Secrets** | Have you identified a unique opportunity that others don't see? | Contrarian insight vs. Conventional wisdom. |
+
+## ⚙️ The Gauntlet Mechanics
+
+The system uses a **Point-Scoring Debate Engine** to evaluate ideas. It is not a simple "feedback" bot.
+- **The Fatal Flaw Rule**: Losing a single "High Severity" point causes immediate failure.
+- **The Gap Report**: A structural failure blocks progress until you pivot.
+- **Detailed Logic**: See [docs/mechanics.md](docs/mechanics.md) for the full scoring rules.
+
 
 ---
 

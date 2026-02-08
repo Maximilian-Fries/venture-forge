@@ -1,5 +1,5 @@
 /**
- * Push Binary Check prompts to Langfuse and set them to Production.
+ * Push prompts to Langfuse and set them to Production.
  *
  * Run with: npx tsx scripts/push-langfuse-prompts.ts
  *
@@ -18,6 +18,11 @@ import {
   FALLBACK_LENS_PROPOSAL_TIMING,
   FALLBACK_LENS_PROPOSAL_MONOPOLY,
   FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
+  FALLBACK_GAUNTLET_VISIONARY_SYSTEM,
+  FALLBACK_GAUNTLET_SKEPTIC_SYSTEM,
+  FALLBACK_GAUNTLET_JURY_SYSTEM,
+  FALLBACK_JURY_GAP_REPORT_SYSTEM,
+  SKEPTIC_PROTOCOLS,
 } from '../src/lib/prompts/defaults';
 
 const langfuse = new Langfuse({
@@ -35,32 +40,87 @@ const langfuse = new Langfuse({
  * - labels: Tags for organization in Langfuse UI
  */
 const PROMPTS = [
+  // Neutral proposal prompts (Standard Bearer drafters)
   {
     name: 'lens-proposal-engineering',
     content: FALLBACK_LENS_PROPOSAL_ENGINEERING,
-    labels: ['binary-check', 'analytic-fidelity', 'engineering', 'wrapper-vs-core', 'production'],
+    labels: ['neutral-pipeline', 'standard-bearer', 'engineering', 'production'],
   },
   {
     name: 'lens-proposal-timing',
     content: FALLBACK_LENS_PROPOSAL_TIMING,
-    labels: ['binary-check', 'analytic-fidelity', 'timing', 'trend-vs-trigger', 'production'],
+    labels: ['neutral-pipeline', 'standard-bearer', 'timing', 'production'],
   },
   {
     name: 'lens-proposal-monopoly',
     content: FALLBACK_LENS_PROPOSAL_MONOPOLY,
-    labels: ['binary-check', 'analytic-fidelity', 'monopoly', 'ocean-vs-pond', 'production'],
+    labels: ['neutral-pipeline', 'standard-bearer', 'monopoly', 'production'],
   },
   {
     name: 'lens-proposal-distribution',
     content: FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
-    labels: ['binary-check', 'analytic-fidelity', 'distribution', 'rented-vs-owned', 'production'],
+    labels: ['neutral-pipeline', 'standard-bearer', 'distribution', 'production'],
+  },
+  // Updated system prompts
+  {
+    name: 'gauntlet-skeptic-system',
+    content: FALLBACK_GAUNTLET_SKEPTIC_SYSTEM,
+    labels: ['gauntlet', 'skeptic', 'analytic-fidelity', 'production'],
+  },
+  {
+    name: 'gauntlet-visionary-system',
+    content: FALLBACK_GAUNTLET_VISIONARY_SYSTEM,
+    labels: ['gauntlet', 'visionary', 'grounding-firewall', 'production'],
+  },
+  {
+    name: 'gauntlet-jury-system',
+    content: FALLBACK_GAUNTLET_JURY_SYSTEM,
+    labels: ['gauntlet', 'jury', 'thiel-10x-test', 'production'],
+  },
+  // New: Jury Gap Report synthesis prompt
+  {
+    name: 'gauntlet-jury-gap-report',
+    content: FALLBACK_JURY_GAP_REPORT_SYSTEM,
+    labels: ['gauntlet', 'jury', 'gap-report', 'production'],
+  },
+  // Lens-specific cartridge protocols (skeptic)
+  {
+    name: 'lens-protocol-skeptic-engineering',
+    content: SKEPTIC_PROTOCOLS.engineering,
+    labels: ['cartridge', 'skeptic', 'engineering', 'analytic-fidelity', 'production'],
+  },
+  {
+    name: 'lens-protocol-skeptic-monopoly',
+    content: SKEPTIC_PROTOCOLS.monopoly,
+    labels: ['cartridge', 'skeptic', 'monopoly', 'production'],
+  },
+  {
+    name: 'lens-protocol-skeptic-distribution',
+    content: SKEPTIC_PROTOCOLS.distribution,
+    labels: ['cartridge', 'skeptic', 'distribution', 'production'],
   },
 ];
 
 async function pushPrompts() {
-  console.log('Pushing prompts to Langfuse (Production)...\n');
+  // --only flag: push specific prompts by name (comma-separated)
+  // Usage: npx tsx scripts/push-langfuse-prompts.ts --only gauntlet-skeptic-system,lens-protocol-skeptic-engineering
+  const onlyFlag = process.argv.find(a => a.startsWith('--only='))?.split('=')[1]
+    ?? (process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null);
+  const onlyNames = onlyFlag ? onlyFlag.split(',').map(s => s.trim()) : null;
 
-  for (const { name, content, labels } of PROMPTS) {
+  const toPush = onlyNames
+    ? PROMPTS.filter(p => onlyNames.includes(p.name))
+    : PROMPTS;
+
+  if (onlyNames && toPush.length === 0) {
+    console.error(`No prompts matched --only filter: ${onlyNames.join(', ')}`);
+    console.error(`Available: ${PROMPTS.map(p => p.name).join(', ')}`);
+    process.exit(1);
+  }
+
+  console.log(`Pushing ${toPush.length} prompt(s) to Langfuse (Production)...\n`);
+
+  for (const { name, content, labels } of toPush) {
     try {
       // Create prompt with isActive=true to set as production
       await langfuse.createPrompt({

@@ -27,9 +27,9 @@ Start with a small, specific market and dominate it completely before expanding.
 
 ### The Venture Jury (Adversarial Debate)
 Ideas are stress-tested through structured adversarial debate, not simple analysis:
-1. **Visionary** defends the 10x breakthrough potential
-2. **Skeptic** attacks with hidden incumbents, timing traps, incrementalism critiques
-3. **GP Jury** (future): Synthesizes the debate into a final verdict, analyzing the *debate quality* not just the raw idea
+1. **Visionary** defends the 10x breakthrough potential, must cite `[GROUNDING: "..."]` from the pitch for every claim
+2. **Skeptic** attacks with physics-based razors; each claim must target a unique variable (Variable Isolation Protocol)
+3. **GP Jury**: Cynical auditor — GROUNDING TEST and VAGUE BAN are the two highest-priority checks; Skeptic wins by default (Burden of Proof)
 
 ### The Venture Manifest
 A structured JSON object serving as the single source of truth. Contains: `core_thesis` (the Secret + 0-to-1 logic), `wedge` (target audience + expansion path), `engineering_moat`, `timing_risks`, and `jury_verdict`. All agents read from and contribute to this manifest.
@@ -38,10 +38,15 @@ A structured JSON object serving as the single source of truth. Contains: `core_
 
 Built with Vite + React + TypeScript + shadcn/ui + Tailwind CSS.
 
-### Agent Personas
-Defined in `src/lib/prompts.ts`:
-- **Visionary** (Peter Thiel/Marc Andreessen): Seeks the Secret and compounding effects
-- **Skeptic** (Ruthless VC/Short-Seller): Finds fatal flaws the founder is ignoring
+### Agent Personas & Analytic Fidelity Protocol
+Defined in `src/lib/prompts/defaults.ts`. Prompts use an **OS + Cartridge** architecture:
+- **OS layer** (`FALLBACK_GAUNTLET_*_SYSTEM`): Structural enforcement rules (format, dedup, grounding). Lens-agnostic.
+- **Cartridge layer** (`VISIONARY_PROTOCOLS`, `SKEPTIC_PROTOCOLS`): Lens-specific subject expertise loaded per debate.
+
+Agent roles:
+- **Visionary**: Defends with Evidence Mandate — every claim needs `[GROUNDING: "exact quote"]` from the pitch. Unearned Asset Rule forbids claiming capabilities beyond input fidelity.
+- **Skeptic**: Attacks with unique-variable claims (Variable Isolation Protocol + Self-Audit). Business filters (Mom Test, Incumbent Test) live in cartridges, not the OS.
+- **Jury**: Applies Rubric of Death in strict order — GROUNDING TEST (#1) and VAGUE BAN (#2) override all qualitative arguments. Burden of Proof defaults to Skeptic.
 - **Investigator** (Rob Fitzpatrick): Generates Mom Test questions about past behavior, never future intentions
 
 ### Analysis Flow
@@ -91,6 +96,12 @@ Four lenses use strict binary validation before generating proposals:
 - **Distribution**: Rented vs Owned (linear CAC vs viral/PLG)
 
 If validation fails, a **Gap Report** is returned instead of a proposal.
+
+### Skeptic Cartridge Highlights
+Business filters from the old Skeptic OS are placed in the cartridges where they belong:
+- **Engineering**: 3 physics-based razors (Textbook Test, Commodity Check, Substitute Test). No business filters — pure tech moat analysis.
+- **Monopoly**: Mom Test in Atomic Pain Traps (problem severity), Incumbent Test in Secret Traps (why hasn't BigCo done this?).
+- **Distribution**: Incumbent Test in Wedge-Channel Traps (can BigCo outspend on this channel?).
 
 ## Implementation Docs
 See `docs/implementation_plan/` for:

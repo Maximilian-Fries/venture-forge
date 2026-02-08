@@ -1,12 +1,28 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Loader2, Flame, ChevronRight, LogOut } from 'lucide-react';
+import { Plus, Search, Loader2, Flame, ChevronRight, LogOut, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
-import { getLocalProjects, isMockProject } from '@/hooks/useProjectManifest';
+import { getLocalProjects, isMockProject, isLocalProject, removeLocalProject } from '@/hooks/useProjectManifest';
 import { MOCK_VENTURES } from '@/data/mockVentures';
 import { getVentureStatus, VENTURE_STATUS_CONFIG, type ProjectManifest } from '@/types/database';
 import { CommandPalette } from './CommandPalette';
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from '@/components/ui/context-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -19,6 +35,7 @@ export function AppShell({ children }: AppShellProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectManifest | null>(null);
 
   const loadProjects = useCallback(async () => {
     setIsLoading(true);
@@ -117,6 +134,24 @@ export function AppShell({ children }: AppShellProps) {
     navigate('/auth');
   };
 
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+    const id = projectToDelete.id;
+
+    if (isLocalProject(id)) {
+      removeLocalProject(id);
+    } else if (!isMockProject(id)) {
+      await supabase.from('project_manifests').delete().eq('id', id);
+    }
+
+    if (currentProjectId === id) {
+      navigate('/');
+    }
+
+    setProjectToDelete(null);
+    loadProjects();
+  };
+
   // Extract current project ID from URL
   const currentProjectId = location.pathname.match(/\/(projects|analyze|forge|gauntlet)\/(.+)/)?.[2];
 
@@ -150,7 +185,10 @@ export function AppShell({ children }: AppShellProps) {
         )}
       >
         {/* Logo / Header */}
-        <div className="flex items-center justify-between p-3 border-b border-zinc-800/60">
+        <div className={cn(
+          "border-b border-zinc-800/60",
+          sidebarCollapsed ? "p-2 flex flex-col items-center gap-2" : "p-3 flex items-center justify-between"
+        )}>
           <button
             onClick={() => navigate('/')}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0"
@@ -212,42 +250,56 @@ export function AppShell({ children }: AppShellProps) {
                 const statusConfig = VENTURE_STATUS_CONFIG[status];
                 const isActive = currentProjectId === project.id;
                 const isMock = isMockProject(project.id);
+                const isEarlyExit = !!project.manifest?.early_exit_reason;
 
                 return (
-                  <button
-                    key={project.id}
-                    onClick={() => navigate(getProjectRoute(project))}
-                    className={cn(
-                      'flex items-center gap-2 w-full rounded-lg text-left transition-colors group',
-                      sidebarCollapsed ? 'justify-center p-2' : 'px-3 py-2',
-                      isActive
-                        ? 'bg-zinc-800/80 text-white'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-                    )}
-                    title={sidebarCollapsed ? project.title : undefined}
-                  >
-                    {/* Status dot */}
-                    <div className={cn('w-2 h-2 rounded-full shrink-0', statusConfig.dotColor)} />
+                  <ContextMenu key={project.id}>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        onClick={() => navigate(getProjectRoute(project))}
+                        className={cn(
+                          'flex items-center gap-2 w-full rounded-lg text-left transition-colors group',
+                          sidebarCollapsed ? 'justify-center p-2' : 'px-3 py-2',
+                          isActive
+                            ? 'bg-zinc-800/80 text-white'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                        )}
+                        title={sidebarCollapsed ? project.title : undefined}
+                      >
+                        {/* Status dot */}
+                        <div className={cn('w-2 h-2 rounded-full shrink-0', isEarlyExit ? 'bg-red-400' : statusConfig.dotColor)} />
 
-                    {!sidebarCollapsed && (
-                      <>
-                        <span className="flex-1 text-sm truncate">{project.title}</span>
-                        {project.monopoly_score > 0 && (
-                          <span className={cn(
-                            'text-xs font-mono tabular-nums',
-                            project.monopoly_score >= 70 ? 'text-green-400' :
-                            project.monopoly_score >= 40 ? 'text-yellow-400' :
-                            'text-zinc-500'
-                          )}>
-                            {project.monopoly_score}
-                          </span>
+                        {!sidebarCollapsed && (
+                          <>
+                            <span className="flex-1 text-sm truncate">{project.title}</span>
+                            {project.monopoly_score > 0 && (
+                              <span className={cn(
+                                'text-xs font-mono tabular-nums',
+                                project.monopoly_score >= 70 ? 'text-green-400' :
+                                project.monopoly_score >= 40 ? 'text-yellow-400' :
+                                'text-zinc-500'
+                              )}>
+                                {project.monopoly_score}
+                              </span>
+                            )}
+                            {isMock && (
+                              <span className="text-[10px] text-zinc-600 ml-1">ex</span>
+                            )}
+                          </>
                         )}
-                        {isMock && (
-                          <span className="text-[10px] text-zinc-600 ml-1">ex</span>
-                        )}
-                      </>
-                    )}
-                  </button>
+                      </button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        disabled={isMock}
+                        className="text-red-400 focus:text-red-400"
+                        onClick={() => setProjectToDelete(project)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 );
               })}
             </nav>
@@ -290,6 +342,27 @@ export function AppShell({ children }: AppShellProps) {
           }}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={projectToDelete !== null} onOpenChange={(open) => { if (!open) setProjectToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete venture?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <span className="font-semibold text-zinc-200">{projectToDelete?.title}</span>. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteProject}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

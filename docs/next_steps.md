@@ -473,3 +473,174 @@ Currently, only `Dashboard.tsx` checks for a user session. A user can bypass the
 
 ### 4. Optimize `AppShell`
 - Ensure the Sidebar/Navigation is also aware of Auth state (e.g., hide sidebar items if not logged in, though `ProtectedRoute` handles the redirect anyway).
+
+---
+
+# 25. Architecture Shift: The Neutral Pipeline
+**Goal**: Eliminate "hallucinated passes" in the lenses by moving the Thiel 10x Audit from the initial drafting stage to the final Jury Adjudication.
+
+## 1. Architecture Shift: The "Neutral Pipeline"
+We are removing the "Binary Router" (Pass/Fail) from the initial Agent steps. The pipeline now follows a "Courtroom" logic.
+
+| Stage | Agent | Current Role (DEPRECATED) | New Role (IMPLEMENTED) |
+| :--- | :--- | :--- | :--- |
+| 1 | Narrative Architect | Evaluates if input is "thin." | **Neutral Grounding**: Refines text without up-leveling tech. |
+| 2 | Lens Drafter | Performs Binary Pass/Fail check. | **Standard Bearer**: Drafts the "Steel-man" version of the lens. |
+| 3 | The Skeptic | Attacks the proposal. | **The Gap Finder**: Identifies the "Atomic Gaps" in the tech. |
+| 4 | The Visionary | Defends the proposal. | **The Defender**: Bound strictly by the "Grounding Test." |
+| 5 | The Jury | Adjudicates points of contention. | **The Thiel Auditor**: Issues the final "Gap Report." |
+
+## 2. Component Updates
+
+### A. The Lens Drafter (Engineering)
+The drafter no longer issues "Gap Reports." It writes the most professional version of the claim possible, but is strictly forbidden from adding science that isn't there.
+
+- **Instruction Update**: "Draft the Engineering Proposal based strictly on the user's provided mechanism. If the mechanism is 'boiling water,' describe it clearly. Do not invent 'thermodynamic optimization pathways' to make it sound 10x."
+
+### B. The Visionary (The Grounding Firewall)
+The Visionary is the most common source of hallucinations (as seen in the "Immersion Cooling" example).
+
+- **Constraint Update**: The Grounding Rule. "You are forbidden from inventing assets, specific technologies, or partnerships not in the raw input. If the Skeptic identifies a gap you cannot fill with the raw text, you must concede the point or provide a Credible Acquisition Path (e.g., 'We will need to develop X')."
+
+### C. The Jury (The Final 10x Auditor)
+The Jury now holds the "Thiel 10x Test" as its primary rubric.
+
+- **Instruction Update**: "If the Visionary failed to prove a 10x breakthrough—or if the 'breakthrough' relies on technology the founder doesn't actually have (Hallucination)—you must rule for the Skeptic."
+- **Output Requirement**: If the Jury rules for the Skeptic on the core engineering point, the final output for that lens is transformed into a Gap Report.
+
+## 3. The "Gap Report" Migration
+The Gap Report is no longer a "Refusal to Write." It is now the Final Verdict.
+
+**Logic Example**:
+1.  **Agent** drafts "Urine Jewelry" Engineering Proposal.
+2.  **Skeptic** attacks: "This is a standard chemical process; anyone can do this."
+3.  **Visionary** attempts to defend (but is blocked from inventing 'Biochemical Kinetics').
+4.  **Jury** rules: "Skeptic wins. Logic: Failing the Textbook Test."
+5.  **Final Output**: A Gap Report explaining that the venture lacks a 10x Engineering Moat and is a "Brand/Craft" play.
+
+# 26. Prompt Engineering Overhaul: The Analytic Fidelity Protocol
+**Objective**: Harden the Gauntlet against "Investor-Speak" and hallucinated capabilities by strictly separating enforcement logic (Operating System) from subject-matter expertise (Cartridges).
+
+## 1. Architectural Change: Clean Separation
+**Goal**: The OS should only enforce structural rules. The Cartridges should enforce subject-matter filters.
+**Action**:
+-   **System Prompts (OS)**: Strip specific business logic (e.g., "The Mom Test") from the base system prompts. Focus on JSON structure, Atomic Claim Protocol, and Grounding Rules.
+-   **Lens Protocols (Cartridges)**: Move specific filters to `SKEPTIC_PROTOCOLS`. Decide in which lens protocol each filter belongs. If they are not already present there, add them.
+    -   **Mom Test**: "Is this a 'nice to have' or 'hair on fire' problem?"
+    -   **Unit Economics**: "Does the math work? (CAC < LTV)"
+    -   **Incumbent Test**: "Why hasn't Google/Apple done this?"
+
+## 2. The Grounding Firewall (Visionary Update)
+**Goal**: Prevent "Hallucinating Forward" (inventing assets like "data flywheels" not in the pitch).
+**Action**: Update `FALLBACK_GAUNTLET_VISIONARY_SYSTEM`:
+-   **New Rule**: The Evidence Mandate. "You must cite the specific phrase from the User Pitch that justifies your defense."
+-   **Constraint**: "If no such phrase exists, you must CONCEDE the point."
+-   **The 'Unearned Asset' Rule**: Explicitly forbid claiming capabilities (e.g., "Proprietary RL") if the user only provided a low-fidelity input (e.g., "Dog walker match").
+
+## 3. The Assassination Bureau Protocol (Jury Update)
+**Goal**: The Jury must become a cynical auditor, not a passive listener.
+**Action**: Update `FALLBACK_GAUNTLET_JURY_SYSTEM`:
+-   **New Rubric Item**: **The Vague Ban**. "If a Visionary uses 'proprietary', 'advanced', or 'AI-driven' without explaining the 'how', the Jury must rule for the Skeptic immediately."
+-   **Burden of Proof**: "The Skeptic wins by default if the Visionary cannot point to a grounding sentence in the pitch."
+-   **Priority**: Elevate GROUNDING TEST and VAGUE BAN above all qualitative arguments.
+
+## 4. Skeptic De-Duplication Logic
+**Goal**: Prevent the Skeptic from "shotgunning" multiple versions of the same attack.
+**Action**: Update `FALLBACK_GAUNTLET_SKEPTIC_SYSTEM`:
+-   **New Step**: **Self-Audit**. "Before returning the JSON, ensure no two claims attack the same failure mechanism."
+-   **Constraint**: "Variable Isolation. Each atomic claim must attack a unique variable (e.g., Variable A: Physics; Variable B: Switching Costs; Variable C: Incumbent Reaction)."
+-   **Logic**: "If two claims attack the same variable, merge them or choose the stronger one."
+
+## 5. Engineering Lens Cartridge Refinement
+**Goal**: Replace generic "traps" with physics-and-logic-based razors to slice through jargon.
+**Action**: Replace `SKEPTIC_PROTOCOLS['engineering']` with:
+-   **The Textbook Test**: "Is this a known process (like chemistry/CRUD apps) being re-labeled?"
+-   **The Commodity Check**: "Is the 10x advantage just 'borrowed' from an API (GPT-4)?"
+-   **The Substitute Test**: "If the founder used a different material/tool, would the business still function the same way?"
+
+
+# 27. Technical Debt: K-Score Migration & Cleanup
+**Objective**: Officially deprecate the "K-Score" (Grounding/Logic/Entropy) nomenclature and logic, replacing it fully with the "Lens Score" (Severity-Weighted Points).
+
+## 1. Delete Dead Code
+- **Action**: Delete `src/lib/agents/k-score.ts`.
+- **Reason**: The logic (Entropy, Hedging Words, etc.) is no longer used. The Debate Engine now calculates scores deterministically based on Jury verdicts.
+
+## 2. Database & Type Refactor
+- **Objective**: Rename `kScore` to `lensScore` to avoid confusion.
+- **Files to Update**:
+    - `src/types/database.ts`: Rename `GauntletLensState.kScore` -> `lensScore`.
+    - `src/pages/Gauntlet.tsx`: Update state persistence and `calculateLensScore` usage.
+    - `src/components/DebateTable.tsx`: Ensure it displays "Lens Score" or "Risk Score" instead of potentially confusing labels.
+- **Migration Strategy**:
+    - Since we are using Supabase/JSONB, we can either:
+        1.  **Lazy Migrate**: Update the frontend to read `lens.lensScore || lens.kScore` and write to `lensScore`.
+        2.  **Hard Rename**: Update the types and fix all build errors. Old data might need a manual script or we just accept that old `kScore` fields are ignored until the lens is re-run (lazy migration is preferred for JSON blobs).
+
+## 3. UI Consistency
+- **Dashboard**: Ensure `ProjectDetails.tsx` (The War Room) displays the score using the new 0-100 logic.
+- **Tooltips**: Remove any hovering tooltips that might still explain "Grounding/Logic/Entropy". Replace them with "Visionary Win Rate (Weighted by Severity)".
+
+---
+
+# 28. War Room Redesign (Visual Overhaul)
+**Objective**: Transform the War Room from an "unorganized space" into a high-fidelity, cohesive "Command Center" dashboard, improving information density and visual hierarchy.
+
+# 28. War Room Redesign (Visual Overhaul)
+**Objective**: Transform the War Room from an "unorganized space" into a high-fidelity, cohesive "Command Center" dashboard, improving information density and visual hierarchy.
+
+## 1. Revised Design Plan (Based on Sketches & Feedback)
+
+### A. Global Layout & Hierarchy
+-   **Goal**: Full-width utilization, no wasted space on the right.
+-   **Structure**: 
+    1.  **Header (The Identity)**: Project Title & Thesis (Left Aligned), Vital Signs & Actions (Right Aligned).
+    2.  **The Pitch (New Section)**: Full-width section below the header for the "Pitch" and "Vision".
+    3.  **The Tactical Grid (Heatmap)**: Moved below the Pitch.
+    4.  **The Dossier (Analysis)**: "Bento Box" layout for deeper analysis (Competitors, Validation, Risks).
+
+### B. Header Refinement
+-   **Current Issue**: Thesis is duplicated and takes too much space. "One sentence thesis" label is redundant.
+-   **New Design**:
+    -   **Top Left**: 
+        -   **Row 1**: Project Title (Large, Editable).
+        -   **Row 2**: Course Thesis (Left-aligned with title, smaller text, no label).
+    -   **Top Right (Vital Signs)**: 
+        -   **Lens Score**: Primary metric.
+        -   **Consistency Check**: Chain Reaction Alert (if any).
+        -   **Status**: "Resolved", "In Progress", or "Conceded" badge.
+    -   **Action Area**:
+        -   **"Enter Gauntlet"**: Primary Action.
+        -   **"Re-attempt"**: Moved OUT of the top-right box. It should be context-aware (e.g., inside the specific lens card or a dedicated "Strategy" section).
+
+### C. The Pitch Section (New)
+-   **Missing Feature**: The actual pitch was not visible.
+-   **Implementation**: 
+    -   A dedicated, full-width "Paper" or "Manifest" section immediately below the header.
+    -   Displays the **Refined Vision** and **Core Thesis** clearly.
+    -   "Classy" typography (Serif or Monospaced mix) to distinguish it as the "Source Truth".
+
+### D. The Heatmap (Tactical Grid)
+-   **Placement**: Moved DOWN (below the Pitch).
+-   **Design**: 
+    -   **Radar/Grid View**: Visual dependency graph.
+    -   **Interaction**: **No more "Click to see failure"**. 
+        -   Failed lenses must display their **Failure Reason** (Gap Report Summary) directly on the card/grid item.
+        -   Resolved lenses display their **Winning Proposition**.
+    -   **Legend**: Remove the "Resolved/Failed/Pending" legend (unnecessary clutter).
+
+### E. The Evaluation/Dossier Section
+-   **Current Issue**: "Venture Conceded" and "Failed Lenses" lists were disconnected and required clicking.
+-   **New Design**: 
+    -   **Integrated**: Failed lenses are part of the main Heatmap/Grid, not a separate list.
+    -   **Full Width**: Ensure components expand to fill the screen (use `flex-1` / `w-full` correctly).
+    -   **No "Empty Right Space"**: Use a responsive grid (2-col or 3-col) for the deeper analysis (Competitors, Validation).
+
+## 2. Implementation Steps
+1.  **Refactor Header**: Consolidate Title/Thesis. Remove duplicate "Summary" tab thesis.
+2.  **Create Pitch Component**: Add the new "Manifest View".
+3.  **Relocate Heatmap**: Move `GauntletHeatmap` below the Pitch.
+4.  **Enhance Lens Cards**: Update `GauntletHeatmap` to show *content* (Failure Reason/Proposal) inside the card, not just status.
+5.  **Layout Fix**: Adjust `ProjectDetails` container to `max-w-full` or `max-w-7xl` and ensure child containers fill space.
+
+

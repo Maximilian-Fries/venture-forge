@@ -33,7 +33,9 @@ import {
   FALLBACK_GAUNTLET_VISIONARY_SYSTEM,
   FALLBACK_GAUNTLET_JURY_SYSTEM,
   FALLBACK_JURY_MONOPOLY_RUBRIC,
+  FALLBACK_JURY_GAP_REPORT_SYSTEM,
 } from '@/lib/prompts/defaults';
+import type { GapReport } from './lens-protocols';
 
 function getModel() {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -228,7 +230,8 @@ export async function generateCritiquePoints(
   lensId: LensId,
   manifest: VentureManifest,
   userProposal: string,
-  pitch: string
+  pitch: string,
+  sessionId?: string
 ): Promise<DebatePoint[]> {
   const lensConfig = LENS_CONFIGS[lensId];
   const context = buildContext(manifest);
@@ -262,7 +265,7 @@ ${pitch}
 Remember: Output ONLY a JSON array. Start with [ and end with ]`;
 
   const model = getModel();
-  const langfuseHandler = getLangfuseCallback();
+  const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
   // Use retry logic for resilience against malformed AI responses
@@ -313,7 +316,8 @@ export async function generateDefense(
   manifest: VentureManifest,
   userProposal: string,
   pitch: string,
-  point: DebatePoint
+  point: DebatePoint,
+  sessionId?: string
 ): Promise<DebatePoint> {
   const lensConfig = LENS_CONFIGS[lensId];
   const context = buildContext(manifest);
@@ -351,7 +355,7 @@ ${point.critique.reasoning}
 Remember: Output ONLY a JSON object. Start with { and end with }`;
 
   const model = getModel();
-  const langfuseHandler = getLangfuseCallback();
+  const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
   // Use retry logic for resilience against malformed AI responses
@@ -393,11 +397,12 @@ export async function generateAllDefenses(
   manifest: VentureManifest,
   userProposal: string,
   pitch: string,
-  points: DebatePoint[]
+  points: DebatePoint[],
+  sessionId?: string
 ): Promise<DebatePoint[]> {
   const results = await Promise.all(
     points.map(point =>
-      generateDefense(lensId, manifest, userProposal, pitch, point)
+      generateDefense(lensId, manifest, userProposal, pitch, point, sessionId)
     )
   );
   return results;
@@ -410,13 +415,20 @@ export async function generateAllDefenses(
 interface VerdictRaw {
   winner: Winner;
   reasoning: string;
+  checklist?: {
+    grounding: string;
+    vague_ban: string;
+    inflation: string;
+    refutation: string;
+  };
 }
 
 export async function adjudicatePoint(
   lensId: LensId,
   manifest: VentureManifest,
   userProposal: string,
-  point: DebatePoint
+  point: DebatePoint,
+  sessionId?: string
 ): Promise<DebatePoint> {
   if (!point.defense) return point;
 
@@ -468,7 +480,7 @@ ${point.defense.source ? `Evidence: ${point.defense.source}` : 'Evidence: None p
 Remember: Output ONLY a JSON object. Start with { and end with }`;
 
   const model = getModel();
-  const langfuseHandler = getLangfuseCallback();
+  const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
   // Use retry logic for resilience against malformed AI responses
@@ -497,6 +509,7 @@ Remember: Output ONLY a JSON object. Start with { and end with }`;
     verdict: {
       winner: verdict.winner === 'visionary' ? 'visionary' : 'skeptic',
       reasoning: verdict.reasoning || 'No reasoning provided',
+      checklist: verdict.checklist,
     },
   };
 }
@@ -508,12 +521,109 @@ export async function adjudicateAllPoints(
   lensId: LensId,
   manifest: VentureManifest,
   userProposal: string,
-  points: DebatePoint[]
+  points: DebatePoint[],
+  sessionId?: string
 ): Promise<DebatePoint[]> {
   const results = await Promise.all(
     points.map(point =>
-      adjudicatePoint(lensId, manifest, userProposal, point)
+      adjudicatePoint(lensId, manifest, userProposal, point, sessionId)
     )
   );
   return results;
+}
+
+// =============================================================================
+// POST-JURY GAP REPORT: Structural failure detection
+// =============================================================================
+
+/** Lenses eligible for post-jury gap reports */
+const GAP_REPORT_LENSES: LensId[] = ['engineering', 'timing', 'monopoly', 'distribution'];
+
+/**
+ * Determine if a gap report should be issued after jury adjudication.
+ * Triggers when ANY debate point has high severity AND the skeptic won.
+ */
+export function shouldIssueGapReport(lensId: LensId, judgedPoints: DebatePoint[]): boolean {
+  if (!GAP_REPORT_LENSES.includes(lensId)) return false;
+
+  return judgedPoints.some(
+    p => p.critique.severity === 'high' && p.verdict?.winner === 'skeptic'
+  );
+}
+
+/**
+ * Generate a Gap Report synthesized from failed high-severity debate points.
+ * Makes one additional AI call to produce a coherent gap report from the debate failures.
+ */
+export async function generateJuryGapReport(
+  lensId: LensId,
+  manifest: VentureManifest,
+  userProposal: string,
+  judgedPoints: DebatePoint[],
+  sessionId?: string
+): Promise<GapReport> {
+  // Filter to high-severity skeptic wins
+  const failedPoints = judgedPoints.filter(
+    p => p.critique.severity === 'high' && p.verdict?.winner === 'skeptic'
+  );
+
+  const lensConfig = LENS_CONFIGS[lensId];
+
+  // Build context of failed points for the synthesis prompt
+  const failedPointsSummary = failedPoints.map((p, idx) => {
+    return `${idx + 1}. ATTACK: "${p.critique.claim}"
+   Reasoning: ${p.critique.reasoning}
+   DEFENSE: "${p.defense?.rebuttal || 'No defense'}"
+   JURY RULING: Skeptic wins — ${p.verdict?.reasoning || 'No reasoning'}`;
+  }).join('\n\n');
+
+  // Fetch gap report synthesis prompt from Langfuse
+  const systemPrompt = await getPrompt(
+    'gauntlet-jury-gap-report',
+    FALLBACK_JURY_GAP_REPORT_SYSTEM
+  );
+
+  const userMessage = `LENS: ${lensConfig.title} (${lensConfig.subtitle})
+
+USER'S PROPOSAL:
+${userProposal}
+
+=== FAILED HIGH-SEVERITY DEBATE POINTS ===
+${failedPointsSummary}
+=== END FAILED POINTS ===
+
+Synthesize these failures into a single Gap Report. Output JSON only.`;
+
+  const model = getModel();
+  const langfuseHandler = getLangfuseCallback(sessionId);
+  const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
+
+  const gapReport = await invokeWithRetry<GapReport>(
+    async () => {
+      const response = await model.invoke(
+        [
+          new SystemMessage(systemPrompt),
+          new HumanMessage(userMessage)
+        ],
+        { callbacks }
+      );
+
+      return typeof response.content === 'string'
+        ? response.content
+        : Array.isArray(response.content)
+          ? (response.content[0] as any).text
+          : '';
+    },
+    (text) => parseJSON<GapReport>(text),
+    `generateJuryGapReport:${lensId}`
+  );
+
+  // Ensure hypotheses array exists
+  return {
+    missing_element: gapReport.missing_element || 'Structural Weakness',
+    reason: gapReport.reason || 'The debate revealed unresolved critical weaknesses.',
+    hypotheses: Array.isArray(gapReport.hypotheses)
+      ? gapReport.hypotheses
+      : [],
+  };
 }

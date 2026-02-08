@@ -144,8 +144,16 @@ export interface GauntletLensState {
   // v2: Point-scoring debate system
   debatePoints?: import('./debate').DebatePoint[];
   debateStatus?: import('./debate').LensDebateResult['status'];
-  kScore?: number;         // Final score (0-100) — now derived from debate points
+  lensScore?: number;      // Final score (0-100) — Visionary Win Rate weighted by Severity
+  /** @deprecated Use lensScore instead. Kept for lazy migration of persisted data. */
+  kScore?: number;
   resolvedAt?: string;     // ISO timestamp
+  sessionId?: string;      // Langfuse session ID for the debate
+  gapReport?: {            // Persisted gap report from jury or binary check failure
+    missing_element: string;
+    reason: string;
+    hypotheses: string[];
+  };
 }
 
 export type VentureStatus = 'ideation' | 'debating' | 'resolved';

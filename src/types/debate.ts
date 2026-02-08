@@ -24,6 +24,12 @@ export interface DebatePoint {
   verdict?: {
     winner: Winner;
     reasoning: string;   // Why the Jury awarded the point
+    checklist?: {
+      grounding: string;
+      vague_ban: string;
+      inflation: string;
+      refutation: string;
+    };
   };
 }
 
@@ -46,14 +52,15 @@ export const SEVERITY_WEIGHTS: Record<Severity, number> = {
  * Score = (Total Visionary Weighted Points / Total Weighted Points) * 100
  */
 export function calculateLensScore(points: DebatePoint[]): number {
-  const judged = points.filter(p => p.verdict);
+  if (!Array.isArray(points)) return 0;
+  const judged = points.filter(p => p?.verdict && p?.critique);
   if (judged.length === 0) return 0;
 
   let totalWeight = 0;
   let visionaryWeight = 0;
 
   for (const point of judged) {
-    const weight = SEVERITY_WEIGHTS[point.critique.severity];
+    const weight = SEVERITY_WEIGHTS[point.critique.severity] ?? 1;
     totalWeight += weight;
     if (point.verdict!.winner === 'visionary') {
       visionaryWeight += weight;

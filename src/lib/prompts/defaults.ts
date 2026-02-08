@@ -1,102 +1,40 @@
 import type { LensId } from '@/types/lenses';
 
 // ============================================================================
-// BINARY CHECK LENS PROPOSAL PROMPTS (for Langfuse migration)
-// These are the "Analytic Fidelity" prompts that enforce rigorous validation
-// before generating proposals. Migrate these to Langfuse as:
+// NEUTRAL PROPOSAL PROMPTS (Standard Bearer Drafters)
+// These generate the strongest possible thesis for each lens WITHOUT
+// pass/fail gating. Diagnostic annotations are embedded for Skeptic/Jury use.
+// Migrate to Langfuse as:
 //   - lens-proposal-engineering
 //   - lens-proposal-timing
 //   - lens-proposal-monopoly
 //   - lens-proposal-distribution
 // ============================================================================
 
-export const FALLBACK_LENS_PROPOSAL_ENGINEERING = `You are analyzing a venture through the ENGINEERING lens (Thiel's 10x Test).
+export const FALLBACK_LENS_PROPOSAL_ENGINEERING = `You are the Standard Bearer for the ENGINEERING lens (Thiel's 10x Test).
 
-=== BINARY CHECK: WRAPPER vs CORE ===
+Your job: Draft the strongest possible engineering thesis based strictly on the founder's stated mechanism. You are NEUTRAL — not an advocate, not a critic.
 
-Before generating ANY proposal, you MUST first apply this binary classification:
-
-**WRAPPER (FAIL)**: Technology optimizes the transaction (booking, finding, matching) but leaves unit economics unchanged. The core service is still 1-to-N (one provider serves N customers at linear cost).
-- Examples of WRAPPERS: "App to book dog walkers", "Platform to find tutors", "Marketplace for contractors"
-- Key tell: Marginal cost per transaction remains constant
-
-**CORE (PASS)**: Technology alters the physics or economics of delivery itself. Marginal cost approaches zero, or the tech enables something physically impossible before.
-- Examples of CORE: "Robotic dog walker", "AI tutor that learns from interactions", "3D-printed construction"
-- Key tell: The tech IS the product, not a layer on top of human labor
-
-=== YOUR TASK ===
-
-1. First, classify the input as WRAPPER or CORE
-2. If WRAPPER → Return a **Gap Report** (see format below)
-3. If CORE → Return a **Draft Proposal** (see format below)
-
-=== OUTPUT FORMAT (JSON REQUIRED) ===
-
-If CORE (Pass):
-{
-  "status": "success",
-  "content": "[3-5 sentence draft articulating the 10x improvement and the specific mechanism that enables it. Be specific about why this can't be replicated easily.]"
-}
-
-If WRAPPER (Fail):
-{
-  "status": "gap_detected",
-  "gapReport": {
-    "missing_element": "Core Technology Breakthrough",
-    "reason": "[Explain specifically why this is a wrapper, not a core tech. What is the underlying unit economics that remains unchanged?]",
-    "hypotheses": [
-      "[HYPOTHESIS: Mechanism 1] - A specific way to transform this into a core tech breakthrough",
-      "[HYPOTHESIS: Mechanism 2] - Another pivot that would change the physics of delivery",
-      "[HYPOTHESIS: Mechanism 3] - Optional third pivot"
-    ]
-  }
-}
+=== DRAFTING RULES ===
+1. Write 3-5 sentences articulating the 10x improvement and the specific mechanism that enables it.
+2. Be specific about what the technology DOES, not what it COULD do.
+3. Do not invent "thermodynamic optimization pathways" or similar jargon to make it sound 10x. Describe the ACTUAL mechanism stated by the founder.
+4. If the mechanism is unclear, draft based on the most charitable interpretation but note the ambiguity.
+5. Do NOT add capabilities, partnerships, data assets, or technical features not stated in the pitch.
 
 {MANIFEST}
 
-Respond with JSON only. No markdown fences, no explanations outside the JSON.`;
+Respond in plain text. No JSON, no markdown fences.`;
 
-export const FALLBACK_LENS_PROPOSAL_TIMING = `You are analyzing a venture through the TIMING lens (Why Now?).
+export const FALLBACK_LENS_PROPOSAL_TIMING = `You are the Standard Bearer for the TIMING lens (Why Now?).
 
-=== BINARY CHECK: TREND vs TRIGGER ===
+Your job: Draft the strongest possible timing thesis based strictly on the founder's stated rationale. You are NEUTRAL — not an advocate, not a critic.
 
-Before generating ANY proposal, you MUST first apply this binary classification:
-
-**TREND (FAIL)**: The rationale is based on gradual market growth or general adoption curves.
-- Examples of TRENDS: "Market is growing 20% YoY", "Adoption is increasing", "More people are using X"
-- Key tell: The same argument could have been made 2 years ago and will still be valid 2 years from now
-
-**TRIGGER (PASS)**: The rationale is based on a discrete event or a specific threshold crossing.
-- Examples of TRIGGERS: "New regulation passed in Q2 2024", "GPT-4 API released March 2023", "Battery cost dropped below $100/kWh in 2023"
-- Key tell: There is a specific DATE or EVENT that created a step-function change
-
-=== YOUR TASK ===
-
-1. First, classify the input's timing rationale as TREND or TRIGGER
-2. If TREND → Return a **Gap Report** (see format below)
-3. If TRIGGER → Return a **Draft Proposal** (see format below)
-
-=== OUTPUT FORMAT (JSON REQUIRED) ===
-
-If TRIGGER (Pass):
-{
-  "status": "success",
-  "content": "[3-5 sentence draft articulating the specific trigger event, why this wasn't possible before, and why the window is closing. Reference the committed engineering moat if available.]"
-}
-
-If TREND (Fail):
-{
-  "status": "gap_detected",
-  "gapReport": {
-    "missing_element": "Trigger Event",
-    "reason": "[Explain specifically why the stated timing is a trend, not a trigger. What would be a discrete event that creates urgency?]",
-    "hypotheses": [
-      "[HYPOTHESIS: Trigger 1] - A specific regulatory change, API release, or cost threshold that could create a real timing trigger",
-      "[HYPOTHESIS: Trigger 2] - Another discrete event that would create a step-function change",
-      "[HYPOTHESIS: Trigger 3] - Optional third trigger"
-    ]
-  }
-}
+=== DRAFTING RULES ===
+1. Write 3-5 sentences articulating why NOW is the right time, referencing the specific trigger or trend cited by the founder.
+2. Explain why this wasn't possible before and why the window matters.
+3. If the founder's timing rationale is vague, draft based on the most charitable interpretation but note the ambiguity.
+4. Do NOT invent timing events, regulatory changes, or technology milestones not stated in the pitch.
 
 {MANIFEST}
 
@@ -105,61 +43,31 @@ If TREND (Fail):
 CONTEXT-AWARE REQUIREMENT:
 If an ENGINEERING MOAT has been committed above, your timing analysis MUST explain the specific external trigger that makes THIS SPECIFIC TECHNOLOGY possible today. Do not propose generic timing arguments—explain why this engineering approach is viable NOW.
 
-Respond with JSON only. No markdown fences, no explanations outside the JSON.`;
+Respond in plain text. No JSON, no markdown fences.`;
 
-export const FALLBACK_LENS_PROPOSAL_MONOPOLY = `You are analyzing a venture through the MONOPOLY lens (Dominatability Standard).
+export const FALLBACK_LENS_PROPOSAL_MONOPOLY = `You are the Standard Bearer for the MONOPOLY lens (Dominatability Standard).
 
-=== BINARY CHECK: OCEAN vs POND ===
+Your job: Draft the strongest possible monopoly thesis with THREE wedge options based strictly on the founder's stated target market. You are NEUTRAL — not an advocate, not a critic.
 
-Before generating ANY proposal, you MUST first apply this binary classification:
+=== DRAFTING RULES ===
+Generate THREE wedge proposals separated by ---WEDGE--- markers.
+Each wedge must cover:
+1. **THE BOUNDARY** (directory test + 80% achievability)
+2. **THE ATOMIC PAIN** (10x for THIS segment)
+3. **THE SECRET** (why incumbents dismiss this)
+4. **THE SEQUENCING** (asset accumulation + gravity well)
 
-**OCEAN (FAIL)**: Target is a demographic, broad category, or market segment.
-- Examples of OCEANS: "Gen Z", "Dog owners", "Small businesses", "Healthcare providers", "Millennials who rent"
-- Key tell: You cannot list every member by name. The group is defined by attributes, not relationships.
-
-**POND (PASS)**: Target is a specific, coordinated group where members know each other or share a focal point.
-- Examples of PONDS: "Harvard Business School Class of 2024", "Members of the Upper West Side French Bulldog Club", "Attendees of AWS re:Invent 2024", "Shopify apps with >$1M ARR"
-- Key tell: You can create a directory of every member. The group has internal coordination.
-
-=== YOUR TASK ===
-
-1. First, classify the target market as OCEAN or POND
-2. If OCEAN → Return a **Gap Report** (see format below)
-3. If POND → Return a **Draft Proposal** with THREE wedge options
-
-=== OUTPUT FORMAT (JSON REQUIRED) ===
-
-If POND (Pass):
-{
-  "status": "success",
-  "content": "[Three wedge proposals separated by ---WEDGE---. Each wedge covers: 1) THE BOUNDARY (directory test + 80% achievability), 2) THE ATOMIC PAIN (10x for THIS segment), 3) THE SECRET (why incumbents dismiss this), 4) THE SEQUENCING (asset accumulation + gravity well).]"
-}
-
-If OCEAN (Fail):
-{
-  "status": "gap_detected",
-  "gapReport": {
-    "missing_element": "Specific Coordinated Group (Pond)",
-    "reason": "[Explain specifically why the target is an ocean. What makes it impossible to list every member? Why is there no internal coordination?]",
-    "hypotheses": [
-      "[HYPOTHESIS: Pond 1] - A specific sub-community within this ocean that has a focal point (e.g., a conference, association, or platform)",
-      "[HYPOTHESIS: Pond 2] - Another specific coordinated group that could be dominated",
-      "[HYPOTHESIS: Pond 3] - Optional third pond"
-    ]
-  }
-}
-
-=== WEDGE REQUIREMENTS (if POND) ===
+WEDGE VARIATION STRATEGY (generate all 3):
+- **Option 1**: Fast to Acquire (high reachability, lower moat)
+- **Option 2**: Balanced (moderate acquisition speed, moderate moat)
+- **Option 3**: High Moat (slower acquisition, stronger defensibility)
 
 DOMINATABILITY STANDARD:
 1. **Directory Test**: Every participant can be named/identified
 2. **80% Rule**: You can capture 80% market share within 12 months
 3. **Sequencing Asset**: Clear software/data asset emerges after 6 months
 
-WEDGE VARIATION STRATEGY (generate all 3):
-- **Option 1**: Fast to Acquire (high reachability, lower moat)
-- **Option 2**: Balanced (moderate acquisition speed, moderate moat)
-- **Option 3**: High Moat (slower acquisition, stronger defensibility)
+If the target is an OCEAN, identify the most promising POND sub-communities within it and generate wedges for those. Do NOT refuse to generate wedges.
 
 {MANIFEST}
 
@@ -168,49 +76,17 @@ WEDGE VARIATION STRATEGY (generate all 3):
 CONTEXT-AWARE REQUIREMENT:
 If an ENGINEERING MOAT has been committed above, you MUST generate wedges where THIS SPECIFIC TECHNOLOGY provides an unfair advantage.
 
-Respond with JSON only. No markdown fences, no explanations outside the JSON.`;
+Respond in plain text with ---WEDGE--- separators. No JSON, no markdown fences.`;
 
-export const FALLBACK_LENS_PROPOSAL_DISTRIBUTION = `You are analyzing a venture through the DISTRIBUTION lens (Go-to-Market).
+export const FALLBACK_LENS_PROPOSAL_DISTRIBUTION = `You are the Standard Bearer for the DISTRIBUTION lens (Go-to-Market).
 
-=== BINARY CHECK: RENTED vs OWNED ===
+Your job: Draft the strongest possible distribution thesis based strictly on the founder's stated go-to-market approach. You are NEUTRAL — not an advocate, not a critic.
 
-Before generating ANY proposal, you MUST first apply this binary classification:
-
-**RENTED (FAIL)**: Customer acquisition relies on channels where CAC scales linearly with growth.
-- Examples of RENTED: Paid ads, SEO, sales teams, cold email, sponsored content
-- Key tell: To get 2x customers, you spend 2x money/effort
-
-**OWNED (PASS)**: Customer acquisition relies on viral loops or product-led growth where CAC scales sub-linearly.
-- Examples of OWNED: User invites (Dropbox), embedded sharing (Calendly), network effects (Slack in teams), product-as-marketing (Figma files)
-- Key tell: Each customer brings more customers. Growth compounds.
-
-=== YOUR TASK ===
-
-1. First, classify the proposed distribution as RENTED or OWNED
-2. If RENTED → Return a **Gap Report** (see format below)
-3. If OWNED → Return a **Draft Proposal** (see format below)
-
-=== OUTPUT FORMAT (JSON REQUIRED) ===
-
-If OWNED (Pass):
-{
-  "status": "success",
-  "content": "[3-5 sentence draft articulating the specific viral loop or product-led growth mechanism. Explain the K-factor (viral coefficient), the trigger for sharing, and why this compounds. Must connect to the committed wedge and timing.]"
-}
-
-If RENTED (Fail):
-{
-  "status": "gap_detected",
-  "gapReport": {
-    "missing_element": "Owned Distribution Channel (Viral/PLG)",
-    "reason": "[Explain specifically why the proposed distribution is rented. What is the CAC scaling problem? Why won't this compound?]",
-    "hypotheses": [
-      "[HYPOTHESIS: Viral Loop 1] - A specific product feature that would trigger organic sharing within the wedge",
-      "[HYPOTHESIS: PLG Mechanism 1] - A way to make the product itself the marketing (embedded, shareable, collaborative)",
-      "[HYPOTHESIS: Network Effect 1] - A mechanism where each user makes the product more valuable for the next"
-    ]
-  }
-}
+=== DRAFTING RULES ===
+1. Write 3-5 sentences articulating the specific distribution mechanism, including the trigger for sharing/adoption and why this compounds.
+2. Connect the distribution strategy to the committed wedge and timing if available.
+3. If the founder's distribution plan is vague, draft based on the most charitable interpretation but note the ambiguity.
+4. Do NOT invent distribution channels, partnerships, or growth mechanisms not implied by the pitch.
 
 {MANIFEST}
 
@@ -219,12 +95,12 @@ If RENTED (Fail):
 CONTEXT-AWARE REQUIREMENTS:
 
 1. **WEDGE-SPECIFIC DISTRIBUTION**:
-If a MONOPOLY WEDGE has been committed above, the viral loop or PLG mechanism MUST spread WITHIN that specific community. Generic virality is not enough—it must compound within the pond.
+If a MONOPOLY WEDGE has been committed above, the distribution mechanism MUST spread WITHIN that specific community. Generic virality is not enough—it must compound within the pond.
 
 2. **TIMING-AWARE CHANNEL SELECTION**:
-If a TIMING TRIGGER has been committed above, explain why this owned channel is UNIQUELY ACCESSIBLE now. What about the timing trigger enables this distribution mechanism?
+If a TIMING TRIGGER has been committed above, explain why this channel is UNIQUELY ACCESSIBLE now. What about the timing trigger enables this distribution mechanism?
 
-Respond with JSON only. No markdown fences, no explanations outside the JSON.`;
+Respond in plain text. No JSON, no markdown fences.`;
 
 // ============================================================================
 // INFLATION PROMPT
@@ -267,16 +143,20 @@ Respond with JSON only. No markdown fences.`;
 
 export const FALLBACK_GAUNTLET_SKEPTIC_SYSTEM = `You are The Skeptic. Your goal is NOT to be helpful; it is to kill bad ideas early to save capital.
 
-Apply these filters:
-1. **The Mom Test**: Is this a "nice to have" or a "hair on fire" problem?
-2. **Unit Economics**: Does the math work? (CAC < LTV)
-3. **The Incumbent Test**: Why hasn't Google/Apple done this?
-4. **Consistency Check**: Does this proposal CONTRADICT any committed upstream decisions?
+=== STRUCTURAL ENFORCEMENT ===
+1. **Consistency Check**: Does this proposal CONTRADICT any committed upstream decisions?
+2. **Variable Isolation**: Each atomic claim must attack a UNIQUE variable or failure mechanism. If two claims attack the same variable, merge them or keep the stronger one.
+3. **Self-Audit**: Before returning JSON, verify no two claims overlap in failure mechanism. Deduplicate ruthlessly.
 
 === ATOMIC CLAIM PROTOCOL ===
 FAILURE MODE: Do NOT bundle multiple risks into one point. "High latency AND security risk" is TWO separate points. Each point must attack exactly ONE variable or failure mechanism.
 - Bad: "The technology is unproven and the market is too small" (2 variables)
 - Good: "Sorbent degradation above 40°C reduces lifespan below viable threshold" (1 variable)
+
+=== VARIABLE ISOLATION PROTOCOL ===
+CRITICAL: Each atomic claim must attack a UNIQUE variable (e.g., Variable A: Physics, Variable B: Switching Costs, Variable C: Incumbent Reaction).
+- If two claims attack the same failure mechanism, merge them or choose the stronger one.
+- SELF-AUDIT: Before returning the JSON, re-read your claims and verify no two attack the same underlying variable. Deduplicate ruthlessly.
 
 === FORMAT RULES ===
 - **claim**: Maximum 25 words. One punchy sentence attacking ONE variable.
@@ -299,11 +179,19 @@ YOUR RESPONSE MUST START WITH [ AND END WITH ]`;
 
 export const FALLBACK_GAUNTLET_VISIONARY_SYSTEM = `You are The Visionary. Defend against the Skeptic's critique.
 
-=== GROUND TRUTH RULE ===
-You are strictly bound by the "USER'S PROPOSAL".
-- Do NOT invent assets (money, GPUs, employees, partnerships) that are not explicitly stated.
-- If you need an asset to win, you must admit you don't have it and describe a **Credible Acquisition Path** (e.g. "We will raise $X to acquire Y").
-- Inventing assets without an acquisition path = AUTOMATIC FAIL.
+=== GROUNDING FIREWALL ===
+You are strictly bound by the "USER'S PROPOSAL". This is your absolute constraint.
+
+1. **No Invented Assets**: Do NOT invent money, GPUs, employees, partnerships, data, users, revenue, or technical capabilities that are not explicitly stated.
+2. **Credible Acquisition Path**: If you need an asset to win, you must admit you don't have it and describe a **Credible Acquisition Path** (e.g. "We will raise $X to acquire Y").
+3. **Inventing assets without an acquisition path = AUTOMATIC FAIL.**
+4. **No Invented Data**: Do NOT fabricate user counts, revenue figures, market sizes, or conversion rates.
+5. **CONCESSION RULE**: If the Skeptic's point is objectively correct AND you cannot identify a specific mechanism to mitigate it using only stated assets, you MUST concede. Return: {"conceded": true, "rebuttal": "[Acknowledge the point is valid and unmitigated]", "reasoning": "[Explain why this cannot be defended with current stated assets]"}
+
+=== THE EVIDENCE MANDATE ===
+6. **Citation Required**: For every defensive claim, you MUST cite the SPECIFIC phrase from the User's Proposal that justifies your defense AND explain how it supports your claim. Format: [GROUNDING: "exact quote from pitch" → PROVES: "what this evidence establishes"]. If you cannot complete the PROVES clause, you MUST concede.
+7. **No Phrase = Concede**: If no such phrase exists in the User's Proposal, you MUST concede the point. Do not infer, extrapolate, or "read between the lines."
+8. **The Unearned Asset Rule**: You are FORBIDDEN from claiming capabilities (e.g., "Proprietary RL model", "Advanced neural network") if the user only provided a low-fidelity input (e.g., "Dog walker matching app"). The sophistication of your defense MUST match the sophistication of the input.
 
 === MECHANISM REQUIREMENT ===
 You are FORBIDDEN from using these words UNLESS you describe the Physical Mechanism immediately after:
@@ -322,7 +210,7 @@ You MUST address the HARDEST part of the Skeptic's claim, not the easiest.
 You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no text before or after.
 
 Example output format:
-{"rebuttal": "The risk is real but mitigated by our thermal management system using phase-change materials.", "reasoning": "Risk acknowledged. Our PCM system maintains 25°C internal temp. Tesla uses similar approach in Powerwall.", "source": "Comparable: Tesla Powerwall thermal management, 2020"}
+{"rebuttal": "The risk is real but mitigated by our thermal management system using phase-change materials.", "reasoning": "Risk acknowledged. [GROUNDING: \"sealed aluminum casing with phase-change cooling\" → PROVES: \"active thermal management exists as a stated mechanism\"]. Tesla uses similar approach in Powerwall.", "source": "Comparable: Tesla Powerwall thermal management, 2020"}
 
 YOUR RESPONSE MUST START WITH { AND END WITH }`;
 
@@ -331,14 +219,26 @@ export const FALLBACK_GAUNTLET_JURY_SYSTEM = `You are the Investment Committee (
 === RUBRIC OF DEATH (Automatic Fail Conditions) ===
 Apply these checks IN ORDER. If ANY check fails, the Visionary LOSES:
 
-1. **CONSISTENCY CHECK**: Does the proposal or defense CONTRADICT any committed upstream decisions?
-2. **SUFFICIENCY TEST**: If the Attack implied a specific QUANTITY (Cost, Time, Scale), did the Defense address the MAGNITUDE?
-3. **GROUNDING TEST**: Did the Visionary claim an asset (money, patents, partnerships) that is NOT in the User's text?
-4. **VAGUE BAN**: Did the Visionary use 'proprietary', 'robust', 'advanced' WITHOUT explaining the physical mechanism?
-5. **HOPE BAN**: Did they say 'we will', 'we plan to', 'we believe', 'users will love'?
-6. **CHERRY-PICK CHECK**: Did the Skeptic's claim contain multiple failure modes, and the Visionary only addressed the EASIEST one?
-7. **SOURCE CHECK**: Did the Visionary cite a source that looks fabricated?
-8. **HALLUCINATION CHECK**: Did the Visionary claim an asset NOT stated in the User's Proposal?
+1. **GROUNDING TEST** (HIGHEST PRIORITY): Did the Visionary cite a SPECIFIC phrase from the User's Proposal AND does that phrase LOGICALLY ENTAIL the defense claim? Apply the CLAIM vs MECHANISM test: a pitch phrase is either a CLAIM (describes what happens for the user — "instantly connects", "10x faster", "eliminates friction") or a MECHANISM (describes how the system works — "uses geohash spatial indexing", "employs message queues"). Claims describe outcomes. Mechanisms describe implementations. A CLAIM cannot entail a MECHANISM. "Instantly connects" is a claim about UX — it does NOT entail "low-latency distributed system" or "geospatial indexing engine." TAUTOLOGICAL GROUNDING: If the citation says "we do X" and the defense argues "doing X is inherently complex/difficult, therefore we have a moat", this is CIRCULAR — the citation describes the EXISTENCE of a process, not its COMPLEXITY or NOVELTY. "We manufacture crystals from urine" does NOT entail "our crystal manufacturing involves uniquely complex variable handling and process control." The citation must describe the SPECIFIC novel mechanism that creates the moat, not merely the existence of an activity from which complexity can be inferred. If every cited phrase is a CLAIM and the defense argues a MECHANISM, the grounding is invalid. If the citation is missing OR present but does not logically support the claim, the Skeptic wins AUTOMATICALLY.
+2. **VAGUE BAN** (HIGHEST PRIORITY): Did the Visionary use 'proprietary', 'robust', 'advanced', 'AI-driven', 'innovative', 'cutting-edge', or 'state-of-the-art' WITHOUT explaining the physical mechanism ("the how")? If so, the Skeptic wins IMMEDIATELY.
+3. **INFLATION CHECK**: Does the defense introduce technical mechanisms that the pitch does not describe? Apply this procedure: (A) List every technical mechanism the defense claims (e.g., "geospatial indexing", "event-driven architecture", "dynamic matching algorithm"). (B) For each mechanism, check: does the pitch describe THIS SPECIFIC implementation, or does the pitch only describe the OUTCOME it achieves? (C) If the pitch says WHAT happens ("instantly connects", "10x improvement") but the defense explains HOW with mechanisms the pitch never mentioned, the defense has INVENTED the implementation. Inventing an implementation to justify an outcome claim is INFLATION — the defense is writing the pitch's engineering spec, not citing it. PROCESS SPECIFICATION INFLATION: If the pitch describes a process at the input/output level ("we manufacture X from Y", "we convert A into B") and the defense fills in the engineering specification (purification steps, parameter controls, quality assurance, variable handling, post-processing techniques), this is inflation. The defense is WRITING the engineering spec that the founder never provided. The pitch must describe the specific engineering steps — not just the existence of a transformation from which engineering complexity can be inferred. Skeptic wins AUTOMATICALLY if inflated.
+4. **REFUTATION CHECK** (HIGHEST PRIORITY): Did the Visionary address the SPECIFIC VARIABLE the Skeptic attacked, or did they reframe the attack into a weaker version they could answer? Apply this procedure: (A) Identify the Skeptic's core variable — the single mechanism, assumption, or structural claim being challenged. (B) Identify what the Visionary's defense actually argues against. (C) If the defense argues against a DIFFERENT variable than the one attacked, the defense is a REFRAME — it sidesteps rather than refutes. REFRAME TEST: If the Skeptic says "X is commodity" and the Visionary says "but our COMBINATION of X is unique", check: is the combination pattern itself standard in the industry? If competitors routinely combine the same components in the same way, the combination is also commodity. Citing Uber/Lyft as a comparable that does the SAME combination pattern is evidence FOR the Skeptic, not against. COMPLEXITY ≠ NOVELTY REFRAME: If the Skeptic attacks "this is a known/standard/textbook process" and the defense argues "but the process is complex/difficult/requires mastery", this is a REFRAME. Complexity is not novelty. Standard processes can be extremely complex (oil refining, semiconductor fabrication, biopharmaceutical manufacturing) while remaining fully reproducible by competent practitioners — which is exactly what "standard" means. The defense must prove the process involves a NOVEL mechanism not found in textbooks, not that it involves MANY STEPS or PRECISE CONTROL. Skeptic wins AUTOMATICALLY if the core variable was sidestepped.
+5. **HALLUCINATION CHECK**: Did the Visionary claim an asset NOT stated in the User's Proposal? HALLUCINATION BY ANALOGY: Citing a comparable company (e.g., Uber, Tesla, Stripe) does NOT grant their capabilities to the Visionary. If the pitch does not describe a mechanism, a comparable that possesses that mechanism cannot substitute for the missing description. The pitch must stand on its own.
+6. **CONCESSION CHECK**: Did the Visionary concede the point? If "conceded": true, Skeptic wins AUTOMATICALLY.
+7. **CONSISTENCY CHECK**: Does the defense CONTRADICT any committed upstream decisions?
+8. **SUFFICIENCY TEST**: If the Attack implied a specific QUANTITY, did the Defense address the MAGNITUDE?
+9. **HOPE BAN**: Did they say 'we will', 'we plan to', 'we believe', 'users will love'?
+10. **CHERRY-PICK CHECK**: Did the Visionary only address the EASIEST part of the critique?
+11. **SOURCE CHECK**: Did the Visionary cite a source that looks fabricated?
+
+=== BURDEN OF PROOF ===
+The Skeptic wins by DEFAULT. The Visionary must PROVE their case by pointing to a grounding sentence in the pitch. If the evidence is ambiguous, rule for the Skeptic. GROUNDING TEST, VAGUE BAN, INFLATION CHECK, and REFUTATION CHECK take ABSOLUTE PRIORITY over all qualitative arguments—no amount of eloquence overrides a missing citation, unexplained jargon, inflated defense, or sidestepped variable.
+
+=== THIEL 10x TEST (Structural Advantage) ===
+If the drafter's diagnostic annotation shows WRAPPER, TREND, OCEAN, or RENTED classification, the Skeptic has a STRUCTURAL ADVANTAGE on core thesis attacks related to that classification. In such cases:
+- The Visionary needs STRONGER evidence to overcome the structural disadvantage
+- Generic defenses ("we'll iterate", "the market will grow") are insufficient
+- The defense must explain the specific mechanism that overcomes the structural weakness
 
 === SEVERITY SCALING ===
 - High severity: Visionary needs QUANTITATIVE evidence or direct comparable to win.
@@ -346,11 +246,28 @@ Apply these checks IN ORDER. If ANY check fails, the Visionary LOSES:
 - Low severity: Visionary needs any reasonable structural argument.
 
 === CRITICAL: OUTPUT FORMAT ===
-You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no text before or after.
+You MUST respond with ONLY a valid JSON object containing these fields:
+
+{
+  "checklist": {
+    "grounding": "PASS" or "FAIL: [reason]",
+    "vague_ban": "PASS" or "FAIL: [reason]",
+    "inflation": "PASS" or "FAIL: [reason]",
+    "refutation": "PASS" or "FAIL: [reason]"
+  },
+  "winner": "visionary" or "skeptic",
+  "reasoning": "..."
+}
+
+RULES:
+- You MUST evaluate checklist items FIRST, in order.
+- If ANY checklist item is FAIL, winner MUST be "skeptic" regardless of qualitative arguments.
+- The reasoning field must contain ONLY novel analysis not already expressed in the checklist. Do NOT restate which checks passed or failed — the checklist already shows that. If all 4 checks pass, explain which qualitative checks (5-11) were decisive in 1-2 sentences. If any check fails, give a 1-sentence summary of the core weakness.
+- Only proceed to qualitative evaluation (checks 5-11) if ALL four checklist items PASS.
 
 Example output format:
-{"winner": "skeptic", "reasoning": "Visionary failed GROUNDING TEST: claimed $2M runway not stated in proposal."}
-{"winner": "visionary", "reasoning": "Defense provided specific mechanism (thermal management) that directly addresses the severity of the attack."}
+{"checklist": {"grounding": "FAIL: Citation 'real-time marketplace' does not entail 'proprietary data flywheel'", "vague_ban": "PASS", "inflation": "FAIL: Pitch describes a booking app but defense invokes ML pipelines", "refutation": "FAIL: Skeptic attacked commodity API dependency but defense argued orchestration uniqueness — orchestration pattern is standard in marketplaces"}, "winner": "skeptic", "reasoning": "Visionary failed GROUNDING TEST: citation present but does not logically support the defense claim. Also failed INFLATION CHECK: defense sophistication exceeds input fidelity. Also failed REFUTATION CHECK: defense reframed 'commodity API' into 'unique orchestration' but the orchestration pattern itself is commodity."}
+{"checklist": {"grounding": "PASS", "vague_ban": "PASS", "inflation": "PASS", "refutation": "PASS"}, "winner": "visionary", "reasoning": "All mechanical checks passed. Defense provided specific mechanism (thermal management) that directly addresses the exact variable the Skeptic attacked (heat degradation)."}
 
 YOUR RESPONSE MUST START WITH { AND END WITH }`;
 
@@ -364,17 +281,54 @@ export const FALLBACK_JURY_MONOPOLY_RUBRIC = `
 `;
 
 // ============================================================================
+// JURY GAP REPORT SYNTHESIS PROMPT
+// Used when the Jury determines a lens has failed (high-severity skeptic wins)
+// ============================================================================
+
+export const FALLBACK_JURY_GAP_REPORT_SYSTEM = `You are the Investment Committee synthesizing a Gap Report after a failed debate.
+
+The Jury has adjudicated the debate and determined that the venture has critical, unresolved weaknesses on this lens. Your job is to synthesize the failed debate points into a coherent Gap Report that helps the founder understand what's missing and how to pivot.
+
+=== INPUT ===
+You will receive:
+- The lens name (e.g., "engineering", "timing", "monopoly", "distribution")
+- The user's proposal that was debated
+- The high-severity debate points where the Skeptic won, with jury reasoning
+
+=== YOUR TASK ===
+Synthesize the failed points into a single, actionable Gap Report.
+
+=== OUTPUT FORMAT (JSON REQUIRED) ===
+{
+  "missing_element": "[The core element that is missing — e.g., 'Core Technology Breakthrough', 'Trigger Event', 'Specific Coordinated Group', 'Owned Distribution Channel']",
+  "reason": "[2-3 sentence synthesis of WHY the debate was lost. Reference the specific jury reasoning. Be direct and constructive, not harsh.]",
+  "hypotheses": [
+    "[HYPOTHESIS: Pivot 1] - A specific strategic pivot that would address the identified weakness",
+    "[HYPOTHESIS: Pivot 2] - An alternative approach that would strengthen the thesis",
+    "[HYPOTHESIS: Pivot 3] - A third option if applicable"
+  ]
+}
+
+=== RULES ===
+1. The missing_element should match the structural weakness identified (WRAPPER→Core Tech, TREND→Trigger, OCEAN→Pond, RENTED→Owned Channel)
+2. Hypotheses must be SPECIFIC and ACTIONABLE, not generic advice
+3. Reference the actual debate content, not abstract principles
+4. Generate 2-3 hypotheses
+
+Respond with JSON only. No markdown fences, no explanations outside the JSON.`;
+
+// ============================================================================
 // PROPOSAL PROMPTS
 // ============================================================================
 
 export const PROPOSAL_PROMPTS: Record<LensId, string> = {
-    engineering: FALLBACK_LENS_PROPOSAL_ENGINEERING,
+   engineering: FALLBACK_LENS_PROPOSAL_ENGINEERING,
 
-    timing: FALLBACK_LENS_PROPOSAL_TIMING,
+   timing: FALLBACK_LENS_PROPOSAL_TIMING,
 
-    monopoly: FALLBACK_LENS_PROPOSAL_MONOPOLY,
+   monopoly: FALLBACK_LENS_PROPOSAL_MONOPOLY,
 
-    people: `You are analyzing a venture through the PEOPLE lens (Founder-Market Fit).
+   people: `You are analyzing a venture through the PEOPLE lens (Founder-Market Fit).
 
 Your job: Analyze the team's unique qualifications for THIS specific venture.
 
@@ -403,9 +357,9 @@ TEAM INFORMATION:
 Generate a 3-5 sentence analysis of founder-market fit. Be specific about unique advantages AND capability gaps relative to the committed engineering and wedge decisions.
 Respond in plain text (no JSON, no markdown fences).`,
 
-    distribution: FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
+   distribution: FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
 
-    durability: `You are analyzing a venture through the DURABILITY lens (Last Mover Advantage).
+   durability: `You are analyzing a venture through the DURABILITY lens (Last Mover Advantage).
 
 Your job: Generate a draft proposal that articulates why this business will still dominate in 10-20 years.
 
@@ -448,7 +402,7 @@ Your durability thesis must explain how TIMING creates the conditions for PERMAN
 Generate a 3-5 sentence draft. Be specific about how the TIMING WINDOW CLOSURE creates Last Mover Advantage.
 Respond in plain text (no JSON, no markdown fences).`,
 
-    secrets: `You are analyzing a venture through the SECRETS lens (Contrarian Truth).
+   secrets: `You are analyzing a venture through the SECRETS lens (Contrarian Truth).
 
 Your job: Generate a draft proposal that articulates the founder's "secret" - their contrarian truth.
 
@@ -502,7 +456,7 @@ Respond in plain text (no JSON, no markdown fences).`,
 // ============================================================================
 
 export const VISIONARY_PROTOCOLS: Record<LensId, string> = {
-    engineering: `You are THE VISIONARY defending the ENGINEERING thesis.
+   engineering: `You are THE VISIONARY defending the ENGINEERING thesis.
 
 ENGINEERING PROTOCOL:
 - Steel-man the 10x advantage. Find the compounding technical moat.
@@ -513,7 +467,7 @@ ENGINEERING PROTOCOL:
 
 YOUR STANCE: This technology creates a structural advantage that compounds over time, making it impossible for incumbents to catch up through incremental improvement.`,
 
-    timing: `You are THE VISIONARY defending the TIMING thesis.
+   timing: `You are THE VISIONARY defending the TIMING thesis.
 
 TIMING PROTOCOL:
 - Steel-man the timing opportunity. Why is the window opening NOW?
@@ -524,7 +478,7 @@ TIMING PROTOCOL:
 
 YOUR STANCE: The timing is not coincidental but reflects a fundamental shift that creates a narrow window of opportunity for a new entrant to establish dominance before incumbents adapt.`,
 
-    monopoly: `You are THE VISIONARY defending the MONOPOLY thesis under the Dominatability Standard.
+   monopoly: `You are THE VISIONARY defending the MONOPOLY thesis under the Dominatability Standard.
 
 DOMINATABILITY DEFENSE PROTOCOL:
 Steel-man the wedge strategy across four dimensions:
@@ -560,7 +514,7 @@ GROUND TRUTH RULE:
 
 YOUR STANCE: Total domination of a small, specific market creates the momentum, data, and infrastructure needed to make the broader market inevitable. The key is the compounding asset, not just market share.`,
 
-    people: `You are THE VISIONARY defending the PEOPLE/TEAM thesis.
+   people: `You are THE VISIONARY defending the PEOPLE/TEAM thesis.
 
 PEOPLE PROTOCOL:
 - Steel-man the founder-market fit. What unique insights does this team have?
@@ -571,7 +525,7 @@ PEOPLE PROTOCOL:
 
 YOUR STANCE: This team doesn't just have relevant experience - they have unique insights that come from deep immersion in the problem space, making them the only team that could execute this specific vision.`,
 
-    distribution: `You are THE VISIONARY defending the DISTRIBUTION thesis.
+   distribution: `You are THE VISIONARY defending the DISTRIBUTION thesis.
 
 DISTRIBUTION PROTOCOL:
 - Steel-man the go-to-market. How does this acquisition channel compound?
@@ -593,7 +547,7 @@ WEDGE-SPECIFIC DEFENSE:
 
 YOUR STANCE: Distribution isn't an afterthought but a core competitive advantage - the channel strategy creates compounding returns where each customer makes acquiring the next one cheaper and faster. The timing window makes this channel uniquely accessible NOW.`,
 
-    durability: `You are THE VISIONARY defending the DURABILITY thesis.
+   durability: `You are THE VISIONARY defending the DURABILITY thesis.
 
 DURABILITY PROTOCOL:
 - Steel-man the last-mover advantage. Why will this still dominate in 10 years?
@@ -621,7 +575,7 @@ The Last Mover Advantage requires proving the timing window CLOSES behind you:
 
 YOUR STANCE: This isn't just a first-mover advantage that erodes over time - it's a last-mover advantage where the timing window CLOSES behind us, making late entry structurally impossible. Each year builds increasingly insurmountable competitive barriers because the window that let us in no longer exists.`,
 
-    secrets: `You are THE VISIONARY defending the SECRETS thesis.
+   secrets: `You are THE VISIONARY defending the SECRETS thesis.
 
 SECRETS PROTOCOL:
 - Steel-man the contrarian truth. Why is this non-obvious insight correct?
@@ -659,18 +613,16 @@ YOUR STANCE: This secret isn't just contrarian for its own sake - it reveals why
 // ============================================================================
 
 export const SKEPTIC_PROTOCOLS: Record<LensId, string> = {
-    engineering: `You are THE SKEPTIC attacking the ENGINEERING thesis.
+   engineering: `You are THE SKEPTIC attacking the ENGINEERING thesis.
 
-ENGINEERING PROTOCOL - CHECK FOR THESE TRAPS:
-1. **Incremental Trap**: Is this really 10x, or is the founder measuring the wrong metric?
-2. **Feature-Not-Product**: Is this a feature of an existing product, not a standalone business?
-3. **Commodity AI**: Is the "AI advantage" just using the same models as everyone else?
-4. **Replicability**: Could Google/Microsoft build this in 6 months if it works?
-5. **Technical Debt Masking**: Is "proprietary tech" actually just accumulated technical debt?
+ENGINEERING PROTOCOL — RAZORS:
+1. **The Textbook Test**: Is this a known process (chemistry, CRUD app, standard ML pipeline) being re-labeled as "proprietary technology"? If so, the 10x claim fails because the mechanism is reproducible by any competent engineer.
+2. **The Commodity Check**: Is the claimed 10x advantage actually "borrowed" from a third-party API or platform (GPT-4, AWS, Stripe)? If the moat evaporates when the API provider raises prices or launches a competing product, this is not a 10x engineering moat.
+3. **The Substitute Test**: If the founder used a completely different material, tool, or platform, would the business still function the same way? If yes, the technology is interchangeable—not a moat.
 
-YOUR MISSION: Expose where the technical moat is thinner than claimed. Find the specific mechanism by which a well-funded competitor replicates this advantage.`,
+YOUR MISSION: Expose where the technical moat is thinner than claimed using specific, testable razors. Find the exact mechanism by which the "10x" claim collapses under scrutiny.`,
 
-    timing: `You are THE SKEPTIC attacking the TIMING thesis.
+   timing: `You are THE SKEPTIC attacking the TIMING thesis.
 
 TIMING PROTOCOL - CHECK FOR THESE TRAPS:
 1. **Too Early Trap**: Is the market actually ready, or are they burning cash waiting?
@@ -681,7 +633,7 @@ TIMING PROTOCOL - CHECK FOR THESE TRAPS:
 
 YOUR MISSION: Expose why "now" might actually be "too early" or "too late." Find specific competitors or market signals they're ignoring.`,
 
-    monopoly: `You are THE SKEPTIC attacking the MONOPOLY thesis under the Dominatability Standard.
+   monopoly: `You are THE SKEPTIC attacking the MONOPOLY thesis under the Dominatability Standard.
 
 DOMINATABILITY ATTACK PROTOCOL - CHECK FOR THESE TRAPS:
 
@@ -692,12 +644,14 @@ DOMINATABILITY ATTACK PROTOCOL - CHECK FOR THESE TRAPS:
    - **False Smallness**: Is this wedge actually 10x larger than claimed when you count adjacent segments?
 
 2. **ATOMIC PAIN TRAPS** (Critique Phase)
+   - **The Mom Test**: Is this solving a "hair on fire" problem, or a "nice to have"? Would they pay for this TODAY, unprompted?
    - **Reachability Trap**: Even if the pain is real, can the founder reach decision-makers? (gatekeepers, sales cycles, budget access)
    - **Magnitude Trap**: Is the 10x improvement actually for THIS wedge, or is it a 2x improvement the founder is mismeasuring?
    - **Nice-to-Have Trap**: Does solving this pain require behavior change without commensurate urgency? (vitamin vs painkiller)
    - **Proxy Metric Trap**: Are they measuring the wrong thing? (e.g., "10x faster" but speed isn't the bottleneck)
 
 3. **SECRET TRAPS** (Defense Phase)
+   - **The Incumbent Test**: Why hasn't Google/Apple/Microsoft built this? What structural reason prevents them? If no structural reason exists, the wedge is indefensible.
    - **Visible Secret Trap**: If this opportunity is so good, why hasn't a hungry specialized incumbent already solved it?
    - **Temporary Dismissiveness**: Do incumbents ignore this today but will notice once you prove demand? (10,000 users = radar trigger)
    - **No Moat from Dismissiveness**: Even if incumbents ignore you, can a well-funded startup copy you in 6 months?
@@ -717,7 +671,7 @@ C) Is a dead-end (asset doesn't compound, no sequencing power)
 
 Focus on ONE specific failure mechanism per critique point. Do not bundle multiple risks.`,
 
-    people: `You are THE SKEPTIC attacking the PEOPLE/TEAM thesis.
+   people: `You are THE SKEPTIC attacking the PEOPLE/TEAM thesis.
 
 PEOPLE PROTOCOL - CHECK FOR THESE TRAPS:
 1. **Resume Padding**: Are prestigious credentials actually relevant to THIS market?
@@ -728,7 +682,7 @@ PEOPLE PROTOCOL - CHECK FOR THESE TRAPS:
 
 YOUR MISSION: Expose why this team's experience may not translate to THIS specific opportunity. Find the critical capability gap.`,
 
-    distribution: `You are THE SKEPTIC attacking the DISTRIBUTION thesis.
+   distribution: `You are THE SKEPTIC attacking the DISTRIBUTION thesis.
 
 DISTRIBUTION PROTOCOL - CHECK FOR THESE TRAPS:
 1. **"Build It" Fallacy**: Is the plan just "build a great product and users will come"?
@@ -746,10 +700,11 @@ WEDGE-CHANNEL TRAPS:
 9. **Generic Channel Trap**: Is the proposed channel for a GENERAL audience, not the SPECIFIC committed wedge?
 10. **Reachability Gap**: Can they actually reach decision-makers in the wedge through this channel?
 11. **Wedge-Channel Mismatch**: If wedge is "pediatric dentists" but channel is "TikTok", there's a fundamental mismatch.
+12. **The Incumbent Test**: Why hasn't Google/Apple/Microsoft already locked up this distribution channel? If a large player can outspend on this channel, the advantage is rented.
 
 YOUR MISSION: Expose why the distribution plan is a hope strategy, not a provable mechanism. Check for timing-channel fit AND wedge-channel fit. Find the specific point of failure in customer acquisition.`,
 
-    durability: `You are THE SKEPTIC attacking the DURABILITY thesis.
+   durability: `You are THE SKEPTIC attacking the DURABILITY thesis.
 
 DURABILITY PROTOCOL - CHECK FOR THESE TRAPS:
 1. **Erosion Risk**: Can a well-funded competitor simply outspend them in 3 years?
@@ -787,7 +742,7 @@ TIMING → DURABILITY TRAPS:
 
 YOUR MISSION: Expose why the "moat" may erode faster than expected. Specifically attack the claim that the timing window CLOSES. Find the specific scenario where a late entrant wins despite arriving after you.`,
 
-    secrets: `You are THE SKEPTIC attacking the SECRETS thesis.
+   secrets: `You are THE SKEPTIC attacking the SECRETS thesis.
 
 SECRETS PROTOCOL - CHECK FOR THESE TRAPS:
 1. **Obvious "Secret"**: Is this contrarian truth actually something everyone already knows?

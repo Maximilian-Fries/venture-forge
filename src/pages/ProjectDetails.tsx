@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, Loader2, Swords, X, Shield,
+  ArrowLeft, Loader2, Swords, Shield,
   Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
-  AlertTriangle, RotateCcw, CheckCircle2, Circle,
+  AlertTriangle, RotateCcw,
   ScrollText, Building2, MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useProjectManifest } from "@/hooks/useProjectManifest";
+import type { ProjectManifestState } from "@/hooks/useProjectManifest";
 import { CompetitorMatrix } from "@/components/CompetitorMatrix";
 import { InterviewLab } from "@/components/InterviewLab";
 import { EditableField } from "@/components/EditableField";
@@ -15,13 +17,15 @@ import { DebateTable } from "@/components/DebateTable";
 import { LENS_CONFIGS, type LensId } from "@/lib/agents/lens-protocols";
 import { LENS_ORDER } from '@/types/lenses';
 import { getDirtyLenses, isVentureConsistent, type DirtyLens } from "@/lib/dirty-state";
-import type { GauntletLensState } from "@/types/database";
+import type { GauntletLensState, VentureManifest } from "@/types/database";
+import { getVentureStatus, VENTURE_STATUS_CONFIG } from "@/types/database";
 import { cn } from "@/lib/utils";
 
-type Tab = "summary" | "competition" | "validation";
+type Tab = "project" | "gauntlet" | "competition" | "validation";
 
 const TABS = [
-  { id: "summary" as Tab, label: "Summary", icon: ScrollText },
+  { id: "project" as Tab, label: "Project", icon: ScrollText },
+  { id: "gauntlet" as Tab, label: "Evaluation", icon: Swords },
   { id: "competition" as Tab, label: "Competitors", icon: Building2 },
   { id: "validation" as Tab, label: "Interview Lab", icon: MessageSquare },
 ];
@@ -55,10 +59,9 @@ export default function ProjectDetails() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentProject, loadProject, updateManifest, updateTitle, isLoading, error } = useProjectManifest();
-  const [detailLens, setDetailLens] = useState<LensId | null>(null);
   const [showInconsistentWarning, setShowInconsistentWarning] = useState(false);
 
-  const activeTab = (searchParams.get("tab") as Tab) || "summary";
+  const activeTab = (searchParams.get("tab") as Tab) || "gauntlet";
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true });
 
   useEffect(() => {
@@ -92,14 +95,15 @@ export default function ProjectDetails() {
   const dirtyLenses = getDirtyLenses(manifest);
   const isConsistent = isVentureConsistent(manifest);
   const resolvedCount = LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').length;
-  const isAllResolved = resolvedCount === 7;
   const earlyExitReason = manifest.early_exit_reason;
-  const earlyExitLensConfig = earlyExitReason ? LENS_CONFIGS[earlyExitReason as LensId] : null;
-  const averageKScore = resolvedCount > 0
+  const ventureStatus = getVentureStatus(currentProject);
+  const statusConfig = VENTURE_STATUS_CONFIG[ventureStatus];
+  const getLensScore = (s: GauntletLensState | undefined) => s?.lensScore ?? s?.kScore ?? 0;
+  const averageLensScore = resolvedCount > 0
     ? Math.round(
       LENS_ORDER
-        .filter(l => lensStates[l]?.kScore)
-        .reduce((sum, l) => sum + (lensStates[l]?.kScore || 0), 0)
+        .filter(l => getLensScore(lensStates[l]))
+        .reduce((sum, l) => sum + getLensScore(lensStates[l]), 0)
       / resolvedCount
     )
     : 0;
@@ -135,37 +139,38 @@ export default function ProjectDetails() {
                   placeholder="Project title..."
                   emptyText="Untitled Project"
                   className="flex-1"
-                  displayClassName="p-0 hover:bg-transparent text-base font-semibold"
+                  displayClassName="p-0 hover:bg-transparent text-xl font-bold tracking-tight"
                 />
               </div>
-              <p className="text-xs text-zinc-500 truncate mt-0.5 px-3">
+              <p className="text-xs text-zinc-500 truncate mt-0.5">
                 {manifest.one_sentence_thesis || manifest.refined_vision?.substring(0, 80) || "The War Room"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {/* Early Exit Badge */}
-            {earlyExitReason && earlyExitLensConfig ? (
-              <div className="text-right">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  <AlertTriangle className="w-4 h-4 text-red-400" />
-                  <div>
-                    <p className="text-[10px] text-red-400 uppercase tracking-wider font-medium">Conceded</p>
-                    <p className="text-xs text-zinc-400">
-                      Failed at <span className="text-red-300">{earlyExitLensConfig.title}</span>
+            {/* Consolidated header badge: either Conceded OR score+status, never both */}
+            {earlyExitReason ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-xs text-red-400 font-medium">Conceded</span>
+              </div>
+            ) : (
+              <>
+                {averageLensScore > 0 && (
+                  <div className="text-right">
+                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Avg Lens Score</p>
+                    <p className={cn("text-xl font-bold tabular-nums", getScoreColor(averageLensScore))}>
+                      {averageLensScore}
                     </p>
                   </div>
+                )}
+                <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-transparent", statusConfig.bgColor)}>
+                  <div className={cn("w-2 h-2 rounded-full", statusConfig.dotColor)} />
+                  <span className={cn("text-xs font-medium", statusConfig.color)}>{statusConfig.label}</span>
                 </div>
-              </div>
-            ) : averageKScore > 0 ? (
-              <div className="text-right">
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Avg Score</p>
-                <p className={cn("text-xl font-bold tabular-nums", getScoreColor(averageKScore))}>
-                  {averageKScore}
-                </p>
-              </div>
-            ) : null}
+              </>
+            )}
             {/* Consistency Status Badge */}
             {resolvedCount > 0 && !isConsistent && !earlyExitReason && (
               <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -173,19 +178,6 @@ export default function ProjectDetails() {
                 <span className="text-[10px] text-red-400 font-medium">Inconsistent</span>
               </div>
             )}
-            <Button
-              size="sm"
-              onClick={handleEnterGauntlet}
-              className={cn(
-                earlyExitReason
-                  ? "bg-zinc-700 hover:bg-zinc-600"
-                  : "bg-amber-600 hover:bg-amber-500",
-                !isConsistent && resolvedCount > 0 && !earlyExitReason && "ring-2 ring-red-500/30"
-              )}
-            >
-              <Swords className="w-3.5 h-3.5 mr-1.5" />
-              {earlyExitReason ? 'Re-attempt Gauntlet' : 'Enter Gauntlet'}
-            </Button>
           </div>
         </div>
       </header>
@@ -199,71 +191,49 @@ export default function ProjectDetails() {
           />
         )}
 
-        {/* The Heatmap */}
-        <div className="px-6 py-6 border-b border-zinc-800/40">
-          <GauntletHeatmap
-            lensStates={lensStates}
-            dirtyLenses={dirtyLenses}
-            resolvedCount={resolvedCount}
-            onLensClick={(lensId) => {
-              const state = lensStates[lensId];
-              if (state?.status === 'resolved' && state.debatePoints?.length) {
-                setDetailLens(lensId);
-              } else {
-                navigate(`/gauntlet/${id}?step=${lensId}`);
-              }
-            }}
-          />
+        {/* Tab bar — directly below alerts */}
+        <div className="px-6 pt-4 flex items-center gap-1 border-b border-zinc-800/40">
+          {TABS.map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-[1px]",
+                  isActive
+                    ? "text-zinc-200 border-cyan-400 bg-zinc-800/40"
+                    : "text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-800/20"
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* The Dossier - Tabbed View */}
-        <div className="flex-1 flex flex-col">
-          {/* Tab bar */}
-          <div className="px-6 pt-4 flex items-center gap-1 border-b border-zinc-800/40">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-[1px]",
-                    isActive
-                      ? "text-zinc-200 border-cyan-400 bg-zinc-800/40"
-                      : "text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-800/20"
-                  )}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Tab content */}
-          <div className="flex-1 p-6">
-            {activeTab === "summary" && (
-              <SummaryTab manifest={manifest} onUpdateManifest={updateManifest} />
-            )}
-            {activeTab === "competition" && <CompetitorMatrix />}
-            {activeTab === "validation" && <InterviewLab />}
-          </div>
+        {/* Tab content */}
+        <div className="flex-1 p-6">
+          {activeTab === "project" && (
+            <ProjectTab manifest={manifest} pitch={currentProject.pitch} onUpdateManifest={updateManifest} />
+          )}
+          {activeTab === "gauntlet" && (
+            <GauntletTab
+              lensStates={lensStates}
+              dirtyLenses={dirtyLenses}
+              resolvedCount={resolvedCount}
+              earlyExitReason={earlyExitReason}
+              isConsistent={isConsistent}
+              onEnterGauntlet={handleEnterGauntlet}
+              onReDebate={(lensId) => navigate(`/gauntlet/${id}?step=${lensId}`)}
+            />
+          )}
+          {activeTab === "competition" && <CompetitorMatrix />}
+          {activeTab === "validation" && <InterviewLab />}
         </div>
       </div>
-
-      {/* Lens Detail Modal */}
-      {detailLens && lensStates[detailLens] && (
-        <LensDetailModal
-          lensId={detailLens}
-          lensState={lensStates[detailLens]}
-          onClose={() => setDetailLens(null)}
-          onReDebate={() => {
-            setDetailLens(null);
-            navigate(`/gauntlet/${id}?step=${detailLens}`);
-          }}
-        />
-      )}
 
       {/* Inconsistent State Warning Modal */}
       {showInconsistentWarning && (
@@ -286,105 +256,280 @@ export default function ProjectDetails() {
 }
 
 // =============================================================================
-// GAUNTLET HEATMAP
+// PROJECT TAB
 // =============================================================================
 
-function GauntletHeatmap({
+function ProjectTab({
+  manifest,
+  pitch,
+  onUpdateManifest,
+}: {
+  manifest: NonNullable<VentureManifest>;
+  pitch: string | null;
+  onUpdateManifest: ProjectManifestState["updateManifest"];
+}) {
+  const pitchText = manifest.refined_vision || manifest.raw_vision || pitch;
+
+  return (
+    <div className="space-y-6">
+      {/* The Pitch */}
+      {(pitchText || manifest.core_thesis?.statement) && (
+        <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-2xl p-8">
+          <div className="flex items-center gap-2 mb-4">
+            <ScrollText className="w-3.5 h-3.5 text-zinc-600" />
+            <span className="text-[10px] text-zinc-600 uppercase tracking-widest font-medium">The Pitch</span>
+          </div>
+
+          {pitchText && (
+            <p className="text-base md:text-lg text-zinc-200 leading-relaxed">
+              {pitchText}
+            </p>
+          )}
+
+          {manifest.core_thesis?.statement && (
+            <>
+              <div className="w-12 h-px bg-zinc-800 my-6" />
+              <p className="text-sm text-zinc-300">{manifest.core_thesis.statement}</p>
+              {manifest.core_thesis.zero_to_one_logic && (
+                <div className="mt-3">
+                  <span className="text-[10px] text-green-400 uppercase tracking-wider font-medium">The Secret: </span>
+                  <span className="text-sm text-zinc-400">{manifest.core_thesis.zero_to_one_logic}</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Thesis + Wedge */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* One-Sentence Thesis */}
+        <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5">
+          <EditableField
+            label="One-Sentence Thesis"
+            value={manifest.one_sentence_thesis || ""}
+            onSave={(value) => onUpdateManifest({ one_sentence_thesis: value })}
+            placeholder="Summarize your venture thesis in one compelling sentence..."
+            emptyText="Click to add a one-sentence thesis..."
+          />
+        </div>
+
+        {/* Wedge */}
+        {manifest.wedge?.target_audience && (
+          <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5 space-y-2">
+            <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">The Wedge</h3>
+            <div>
+              <span className="text-[10px] text-purple-400 uppercase tracking-wider font-medium">Target: </span>
+              <span className="text-sm text-zinc-300">{manifest.wedge.target_audience}</span>
+            </div>
+            {manifest.wedge.expansion_path && (
+              <div>
+                <span className="text-[10px] text-purple-400 uppercase tracking-wider font-medium">Expansion: </span>
+                <span className="text-sm text-zinc-300">{manifest.wedge.expansion_path}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// GAUNTLET TAB
+// =============================================================================
+
+function GauntletTab({
   lensStates,
   dirtyLenses,
   resolvedCount,
-  onLensClick,
+  earlyExitReason,
+  isConsistent,
+  onEnterGauntlet,
+  onReDebate,
 }: {
   lensStates: Record<string, GauntletLensState>;
   dirtyLenses: DirtyLens[];
   resolvedCount: number;
-  onLensClick: (lensId: LensId) => void;
+  earlyExitReason: string | undefined;
+  isConsistent: boolean;
+  onEnterGauntlet: () => void;
+  onReDebate: (lensId: LensId) => void;
 }) {
   const dirtySet = new Set(dirtyLenses.map(d => d.lensId));
+  const isAllResolved = resolvedCount === 7;
 
   return (
     <div className="space-y-4">
+      {/* Header row */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Gauntlet Heatmap</h2>
+          <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Gauntlet Report</h2>
           <p className="text-[11px] text-zinc-600 mt-0.5">
-            {resolvedCount}/7 lenses resolved
+            {resolvedCount} of 7 resolved
           </p>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-zinc-600">
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500" /> Resolved</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500" /> In Progress</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-zinc-600" /> Pending</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500" /> Dirty</span>
-        </div>
+        {!isAllResolved && !earlyExitReason && (
+          <Button
+            onClick={onEnterGauntlet}
+            className={cn(
+              "bg-amber-600 hover:bg-amber-500",
+              !isConsistent && resolvedCount > 0 && "ring-2 ring-red-500/30"
+            )}
+          >
+            <Swords className="w-3.5 h-3.5 mr-1.5" />
+            Enter Gauntlet
+          </Button>
+        )}
+        {earlyExitReason && (
+          <Button
+            variant="outline"
+            onClick={onEnterGauntlet}
+          >
+            <Swords className="w-3.5 h-3.5 mr-1.5" />
+            Re-attempt Gauntlet
+          </Button>
+        )}
       </div>
 
-      <div className="grid grid-cols-7 gap-3">
+      {/* Vertical Accordion */}
+      <Accordion type="multiple" className="space-y-2">
         {LENS_ORDER.map(lensId => {
           const config = LENS_CONFIGS[lensId];
           const state = lensStates[lensId];
           const Icon = LENS_ICONS[lensId];
           const isDirty = dirtySet.has(lensId);
-          const kScore = state?.kScore || 0;
+          const score = state?.lensScore ?? state?.kScore ?? 0;
           const isResolved = state?.status === 'resolved';
-          const isInProgress = state?.status && state.status !== 'pending' && state.status !== 'resolved';
+          const isFailed = !isResolved && !!state?.debatePoints?.length && (state?.lensScore != null || state?.kScore != null);
+          const isInProgress = state?.status && state.status !== 'pending' && state.status !== 'resolved' && !isFailed;
+          const points = state?.debatePoints || [];
+
+          const contentText = isResolved ? (state?.userEdit || state?.proposal) : null;
+          const gapReport = isFailed ? state?.gapReport : null;
 
           return (
-            <button
+            <AccordionItem
               key={lensId}
-              onClick={() => onLensClick(lensId)}
+              value={lensId}
               className={cn(
-                "relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all hover:scale-[1.02]",
+                "rounded-xl border px-4 overflow-hidden",
                 isDirty
                   ? 'border-red-500/40 bg-red-500/5'
                   : isResolved
-                    ? getScoreBgColor(kScore)
-                    : isInProgress
-                      ? 'border-amber-500/30 bg-amber-500/5'
-                      : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-700'
+                    ? getScoreBgColor(score)
+                    : isFailed
+                      ? 'border-red-500/30 bg-red-500/5'
+                      : isInProgress
+                        ? 'border-amber-500/30 bg-amber-500/5'
+                        : 'border-zinc-800 bg-zinc-900/30'
               )}
             >
-              {/* Dirty indicator */}
-              {isDirty && (
-                <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
-                  <AlertTriangle className="w-2.5 h-2.5 text-white" />
+              <AccordionTrigger className="hover:no-underline py-3 gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Dirty dot */}
+                  {isDirty && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                  )}
+
+                  {/* Icon */}
+                  <Icon className={cn(
+                    'w-4 h-4 shrink-0',
+                    isDirty ? 'text-red-400' :
+                      isResolved ? getScoreColor(score) :
+                        isFailed ? 'text-red-400' :
+                          isInProgress ? 'text-amber-400' :
+                            'text-zinc-600'
+                  )} />
+
+                  {/* Title + subtitle */}
+                  <div className="flex-1 min-w-0 text-left">
+                    <span className={cn(
+                      'text-sm font-medium',
+                      isDirty ? 'text-red-400' :
+                        isResolved ? 'text-zinc-200' :
+                          isFailed ? 'text-red-300' :
+                            'text-zinc-400'
+                    )}>
+                      {config.title}
+                    </span>
+                    <span className="text-[10px] text-zinc-600 ml-2">{config.subtitle}</span>
+                  </div>
+
+                  {/* Score or nothing if Conceded */}
+                  {(isResolved || isFailed) ? (
+                    <div className="flex items-center gap-3 shrink-0">
+                      {isResolved && score > 0 && (
+                        <span className={cn('text-base font-bold tabular-nums', getScoreColor(score))}>
+                          {score}
+                        </span>
+                      )}
+                    </div>
+                  ) : isInProgress ? (
+                    <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+                  ) : null}
                 </div>
-              )}
+              </AccordionTrigger>
 
-              <Icon className={cn(
-                'w-5 h-5',
-                isDirty ? 'text-red-400' :
-                  isResolved ? getScoreColor(kScore) :
-                    isInProgress ? 'text-amber-400' :
-                      'text-zinc-600'
-              )} />
+              <AccordionContent className="pb-4 pt-0">
+                <div className="space-y-4">
+                  {/* Gap Report */}
+                  {gapReport && (
+                    <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        <span className="text-xs font-medium text-red-400 uppercase tracking-wider">Jury Gap Report</span>
+                      </div>
+                      <p className="text-xs text-zinc-300">
+                        <span className="text-red-300 font-medium">Missing: </span>{gapReport.missing_element}
+                      </p>
+                      <p className="text-xs text-zinc-400">{gapReport.reason}</p>
+                      {gapReport.hypotheses?.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Suggested Pivots:</span>
+                          {gapReport.hypotheses.map((h, i) => (
+                            <p key={i} className="text-xs text-zinc-300 pl-3 border-l-2 border-red-500/30">{h}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-              {/* K-Score or status */}
-              {isResolved && kScore > 0 ? (
-                <span className={cn('text-lg font-bold tabular-nums', getScoreColor(kScore))}>
-                  {kScore}
-                </span>
-              ) : isInProgress ? (
-                <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
-              ) : (
-                <Circle className="w-4 h-4 text-zinc-700" />
-              )}
+                  {/* Position — no truncation */}
+                  {contentText && (
+                    <div className={cn('border rounded-lg p-3', isFailed ? 'border-red-500/20 bg-red-500/5' : config.borderColor + ' ' + config.bgColor)}>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Position:</span>
+                      <p className="text-sm text-zinc-200 mt-1 whitespace-pre-wrap">
+                        {contentText}
+                      </p>
+                    </div>
+                  )}
 
-              <div className="text-center">
-                <p className={cn(
-                  'text-[11px] font-medium',
-                  isDirty ? 'text-red-400' :
-                    isResolved ? 'text-zinc-300' :
-                      'text-zinc-500'
-                )}>
-                  {config.title}
-                </p>
-                <p className="text-[9px] text-zinc-600">{config.subtitle}</p>
-              </div>
-            </button>
+                  {/* Debate Table — inline, no score summary (shown in trigger) */}
+                  {points.length > 0 && (
+                    <DebateTable points={points} hideScoreSummary />
+                  )}
+
+                  {/* Re-debate button */}
+                  {(isResolved || isFailed) && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onReDebate(lensId)}
+                        className="text-amber-400 hover:text-amber-300"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                        Re-Debate
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           );
         })}
-      </div>
+      </Accordion>
     </div>
   );
 }
@@ -468,257 +613,6 @@ function DirtyStateAlerts({
               </div>
             );
           })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// SUMMARY TAB
-// =============================================================================
-
-import type { ProjectManifestState } from "@/hooks/useProjectManifest";
-
-function SummaryTab({
-  manifest,
-  onUpdateManifest,
-}: {
-  manifest: NonNullable<ProjectManifestState["currentProject"]>["manifest"];
-  onUpdateManifest: ProjectManifestState["updateManifest"];
-}) {
-  const lensStates = manifest?.gauntlet_lenses || {};
-
-  return (
-    <div className="space-y-6 max-w-3xl">
-      {/* Early Exit Alert */}
-      {manifest?.early_exit_reason && (
-        <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-red-400 mb-1">Venture Conceded</h3>
-              <p className="text-xs text-zinc-400">
-                This venture was archived after failing the{' '}
-                <span className="text-red-300 font-medium">
-                  {LENS_CONFIGS[manifest.early_exit_reason as LensId]?.title || manifest.early_exit_reason}
-                </span>
-                {' '}lens. The data below reflects analysis completed before the gap was detected.
-              </p>
-              {lensStates[manifest.early_exit_reason]?.userEdit && (
-                <div className="mt-3 bg-zinc-900/50 border border-zinc-800 rounded-lg p-3">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Last Hypothesis</p>
-                  <p className="text-xs text-zinc-300">
-                    {lensStates[manifest.early_exit_reason]?.userEdit}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* One-Sentence Thesis */}
-      <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5">
-        <EditableField
-          label="One-Sentence Thesis"
-          value={manifest?.one_sentence_thesis || ""}
-          onSave={(value) => onUpdateManifest({ one_sentence_thesis: value })}
-          placeholder="Summarize your venture thesis in one compelling sentence..."
-          emptyText="Click to add a one-sentence thesis..."
-        />
-      </div>
-
-      {/* Refined Vision from Forge */}
-      {manifest?.refined_vision && (
-        <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Inflated Vision (from Forge)</h3>
-          <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
-            {manifest.refined_vision}
-          </p>
-        </div>
-      )}
-
-      {/* Core Thesis & Secret */}
-      {manifest?.core_thesis?.statement && (
-        <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5 space-y-3">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Core Thesis</h3>
-          <p className="text-sm text-zinc-200">{manifest.core_thesis.statement}</p>
-          {manifest.core_thesis.zero_to_one_logic && (
-            <div className="mt-2">
-              <span className="text-[10px] text-green-400 uppercase tracking-wider font-medium">The Secret: </span>
-              <span className="text-sm text-zinc-300">{manifest.core_thesis.zero_to_one_logic}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Resolved Lens Summaries */}
-      {LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Resolved Positions</h3>
-          <div className="space-y-2">
-            {LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').map(lensId => {
-              const state = lensStates[lensId] as GauntletLensState;
-              const config = LENS_CONFIGS[lensId];
-              const Icon = LENS_ICONS[lensId];
-              const debatePoints = state.debatePoints || [];
-              const vWins = debatePoints.filter(p => p.verdict?.winner === 'visionary').length;
-              const sWins = debatePoints.filter(p => p.verdict?.winner === 'skeptic').length;
-              return (
-                <div key={lensId} className={cn('rounded-lg border p-4', config.bgColor, config.borderColor)}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Icon className={cn('w-4 h-4', config.color)} />
-                    <span className={cn('text-xs font-medium uppercase tracking-wider', config.color)}>
-                      {config.title}
-                    </span>
-                    <div className="flex items-center gap-2 ml-auto">
-                      {debatePoints.length > 0 && (
-                        <span className="text-[10px] text-zinc-500">
-                          <Shield className="w-3 h-3 inline text-cyan-400" />{vWins}
-                          {' / '}
-                          <Swords className="w-3 h-3 inline text-orange-400" />{sWins}
-                        </span>
-                      )}
-                      <span className={cn('text-xs font-mono font-semibold', getScoreColor(state.kScore || 0))}>
-                        {state.kScore || '--'}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-zinc-300 line-clamp-3">
-                    {state.userEdit || state.proposal || 'No position recorded'}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Jury Verdict (if exists from old system) */}
-      {manifest?.jury_verdict?.synthesis && (
-        <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Jury Verdict</h3>
-          <p className="text-sm text-zinc-300 whitespace-pre-wrap mb-3">
-            {manifest.jury_verdict.synthesis}
-          </p>
-          {manifest.jury_verdict.red_flags && manifest.jury_verdict.red_flags.length > 0 && (
-            <div className="border-t border-zinc-800 pt-3">
-              <p className="text-[10px] text-red-400 font-medium mb-1.5 uppercase tracking-wider">Residual Risks</p>
-              <ul className="space-y-1">
-                {manifest.jury_verdict.red_flags.map((flag, i) => (
-                  <li key={i} className="text-xs text-zinc-400 flex items-start gap-1.5">
-                    <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
-                    {flag}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Wedge */}
-      {manifest?.wedge?.target_audience && (
-        <div className="bg-zinc-900/50 rounded-xl border border-zinc-800 p-5 space-y-2">
-          <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">The Wedge</h3>
-          <div>
-            <span className="text-[10px] text-purple-400 uppercase tracking-wider font-medium">Target: </span>
-            <span className="text-sm text-zinc-300">{manifest.wedge.target_audience}</span>
-          </div>
-          {manifest.wedge.expansion_path && (
-            <div>
-              <span className="text-[10px] text-purple-400 uppercase tracking-wider font-medium">Expansion: </span>
-              <span className="text-sm text-zinc-300">{manifest.wedge.expansion_path}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =============================================================================
-// LENS DETAIL MODAL
-// =============================================================================
-
-function LensDetailModal({
-  lensId,
-  lensState,
-  onClose,
-  onReDebate,
-}: {
-  lensId: LensId;
-  lensState: GauntletLensState;
-  onClose: () => void;
-  onReDebate: () => void;
-}) {
-  const config = LENS_CONFIGS[lensId];
-  const Icon = LENS_ICONS[lensId];
-  const points = lensState.debatePoints || [];
-  const score = lensState.kScore || 0;
-  const visionaryWins = points.filter(p => p.verdict?.winner === 'visionary').length;
-  const skepticWins = points.filter(p => p.verdict?.winner === 'skeptic').length;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-3xl max-h-[85vh] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden mx-4">
-        {/* Header */}
-        <div className={cn('px-6 py-4 border-b border-zinc-800/60 flex items-center justify-between', config.bgColor)}>
-          <div className="flex items-center gap-3">
-            <Icon className={cn('w-5 h-5', config.color)} />
-            <div>
-              <h2 className={cn('text-sm font-semibold', config.color)}>
-                {config.title} — {config.subtitle}
-              </h2>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                Score: <span className={cn(
-                  'font-mono font-semibold',
-                  getScoreColor(score)
-                )}>{score}</span>
-                <span className="text-zinc-600 ml-2">
-                  (<Shield className="w-3 h-3 inline text-cyan-400" /> {visionaryWins} / <Swords className="w-3 h-3 inline text-orange-400" /> {skepticWins})
-                </span>
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg hover:bg-zinc-800"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Position */}
-          <div className={cn('border rounded-lg p-3', config.borderColor, config.bgColor)}>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Position:</span>
-            <p className="text-sm text-zinc-200 mt-1 whitespace-pre-wrap line-clamp-4">
-              {lensState.userEdit || lensState.proposal || 'No position'}
-            </p>
-          </div>
-
-          {/* Debate Table */}
-          <DebateTable points={points} />
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-zinc-800/60 flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={onReDebate} className="text-amber-400 hover:text-amber-300">
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-            Re-Debate in Gauntlet
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-zinc-400">
-            Close
-          </Button>
         </div>
       </div>
     </div>

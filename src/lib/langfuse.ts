@@ -4,7 +4,7 @@ const LANGFUSE_PUBLIC_KEY = import.meta.env.VITE_LANGFUSE_PUBLIC_KEY;
 const LANGFUSE_SECRET_KEY = import.meta.env.VITE_LANGFUSE_SECRET_KEY;
 const LANGFUSE_BASE_URL = import.meta.env.VITE_LANGFUSE_HOST || "https://cloud.langfuse.com";
 
-export function getLangfuseCallback() {
+export function getLangfuseCallback(sessionId?: string) {
     if (!LANGFUSE_PUBLIC_KEY) {
         console.warn("Langfuse Public Key not found. Tracing disabled.");
         return undefined;
@@ -18,5 +18,6 @@ export function getLangfuseCallback() {
         publicKey: LANGFUSE_PUBLIC_KEY,
         secretKey: LANGFUSE_SECRET_KEY,
         baseUrl: LANGFUSE_BASE_URL,
+        sessionId: sessionId,
     });
 }

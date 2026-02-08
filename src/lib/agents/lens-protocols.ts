@@ -441,16 +441,16 @@ export function getLensSyncFields(lensId: LensId, resolvedText: string): Partial
   }
 }
 
-// Lenses that use the Binary Check / Gap Report protocol
-const BINARY_CHECK_LENSES: LensId[] = ['engineering', 'timing', 'monopoly', 'distribution'];
-
 /**
- * Parse the AI response for Binary Check lenses.
- * These lenses return JSON with either a success or gap_detected status.
+ * Lightweight JSON unwrapper for Langfuse migration compatibility.
+ * During migration, old Langfuse prompts may still return JSON-wrapped responses.
+ * This extracts the content if present, otherwise returns the raw text.
  */
-function parseBinaryCheckResponse(rawResponse: string, lensId: LensId): LensProposalResult {
-  // Try to extract JSON from the response (handle markdown fences)
-  let jsonStr = rawResponse.trim();
+function unwrapLegacyJsonResponse(rawResponse: string): string {
+  const trimmed = rawResponse.trim();
+
+  // Try to detect JSON-wrapped responses from old prompts
+  let jsonStr = trimmed;
 
   // Remove markdown code fences if present
   const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -458,66 +458,26 @@ function parseBinaryCheckResponse(rawResponse: string, lensId: LensId): LensProp
     jsonStr = jsonMatch[1].trim();
   }
 
-  // Try to find JSON object in the response
-  const startBrace = jsonStr.indexOf('{');
-  const endBrace = jsonStr.lastIndexOf('}');
-  if (startBrace !== -1 && endBrace !== -1 && endBrace > startBrace) {
-    jsonStr = jsonStr.slice(startBrace, endBrace + 1);
-  }
-
-  try {
-    const parsed = JSON.parse(jsonStr);
-
-    // Validate the response structure
-    if (parsed.status === 'success' && typeof parsed.content === 'string') {
-      return { status: 'success', content: parsed.content };
-    }
-
-    if (parsed.status === 'gap_detected' && parsed.gapReport) {
-      const gapReport: GapReport = {
-        missing_element: parsed.gapReport.missing_element || 'Unknown',
-        reason: parsed.gapReport.reason || 'No reason provided',
-        hypotheses: Array.isArray(parsed.gapReport.hypotheses)
-          ? parsed.gapReport.hypotheses
-          : [],
-      };
-      return { status: 'gap_detected', gapReport };
-    }
-
-    // If the JSON doesn't match expected format, treat the whole response as content
-    console.warn(`[${lensId}] Unexpected JSON structure, treating as plain text`);
-    return { status: 'success', content: rawResponse };
-
-  } catch (parseError) {
-    // If JSON parsing fails, check if this looks like a gap report in plain text
-    const lowerResponse = rawResponse.toLowerCase();
-    if (lowerResponse.includes('gap detected') ||
-        lowerResponse.includes('gap report') ||
-        lowerResponse.includes('binary check: fail')) {
-      // Try to extract gap report info from plain text
-      console.warn(`[${lensId}] Gap report detected but not valid JSON, attempting extraction`);
-
-      // Extract hypotheses (look for [HYPOTHESIS: ...] patterns)
-      const hypotheses: string[] = [];
-      const hypothesisMatches = rawResponse.matchAll(/\[HYPOTHESIS[:\s]*([^\]]+)\]/gi);
-      for (const match of hypothesisMatches) {
-        hypotheses.push(match[1].trim());
+  // Only attempt JSON parse if it looks like JSON
+  if (jsonStr.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      // Old format: {status: "success", content: "..."}
+      if (parsed.status === 'success' && typeof parsed.content === 'string') {
+        console.log('[unwrapLegacyJsonResponse] Unwrapped legacy JSON response');
+        return parsed.content;
       }
-
-      return {
-        status: 'gap_detected',
-        gapReport: {
-          missing_element: 'Unable to parse',
-          reason: rawResponse.slice(0, 500),
-          hypotheses: hypotheses.length > 0 ? hypotheses : ['Consider narrowing your focus', 'Identify a specific trigger event'],
-        }
-      };
+      // Old format: {status: "gap_detected", ...} — treat as plain text during migration
+      if (parsed.status === 'gap_detected') {
+        console.warn('[unwrapLegacyJsonResponse] Legacy gap_detected response treated as plain text');
+        return parsed.gapReport?.reason || rawResponse;
+      }
+    } catch {
+      // Not valid JSON, that's fine — use as plain text
     }
-
-    // Otherwise, treat as plain text success
-    console.warn(`[${lensId}] Failed to parse JSON, treating as plain text:`, parseError);
-    return { status: 'success', content: rawResponse };
   }
+
+  return rawResponse;
 }
 
 /**
@@ -532,7 +492,8 @@ export async function generateLensProposal(
   lensId: LensId,
   manifest: VentureManifest,
   pitch: string,
-  peopleInput?: string
+  peopleInput?: string,
+  sessionId?: string
 ): Promise<LensProposalResult> {
   // Build context for prompt compilation
   // Exclude the current lens's old value to prevent contamination
@@ -573,7 +534,7 @@ ${pitch}`;
   // Call Gemini
   try {
     const model = getModel();
-    const callbacks = getLangfuseCallback();
+    const callbacks = getLangfuseCallback(sessionId);
 
     const response = await model.invoke([
       new HumanMessage(fullPrompt)
@@ -584,13 +545,10 @@ ${pitch}`;
 
     const rawContent = response.content as string;
 
-    // For Binary Check lenses, parse the structured response
-    if (BINARY_CHECK_LENSES.includes(lensId)) {
-      return parseBinaryCheckResponse(rawContent, lensId);
-    }
-
-    // For non-Binary Check lenses, return as plain text success
-    return { status: 'success', content: rawContent };
+    // All lenses now return plain text (neutral pipeline).
+    // Unwrap legacy JSON responses from old Langfuse prompts during migration.
+    const content = unwrapLegacyJsonResponse(rawContent);
+    return { status: 'success', content };
   } catch (error) {
     console.error('Lens proposal generation failed:', error);
     throw error;
@@ -608,7 +566,8 @@ export async function runLensDebateTurn(
   pitch: string,
   userProposal: string,
   previousDebate: { role: 'visionary' | 'skeptic'; content: string }[],
-  _peopleInput?: string // Reserved for future use
+  _peopleInput?: string, // Reserved for future use
+  sessionId?: string
 ): Promise<{ visionary: string; skeptic: string }> {
   const context = buildManifestContext(manifest, lensId);
 
@@ -656,7 +615,7 @@ Respond with 2-4 paragraphs. Be specific and cite the traps/anti-patterns from y
 Respond in plain text.`;
 
   const model = getModel();
-  const callbacks = getLangfuseCallback();
+  const callbacks = getLangfuseCallback(sessionId);
 
   async function callModel(prompt: string, runName: string): Promise<string> {
     const response = await model.invoke([

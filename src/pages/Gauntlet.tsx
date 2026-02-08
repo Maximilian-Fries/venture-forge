@@ -3,20 +3,29 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Loader2, Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
   CheckCircle2, Circle, Play, Pencil, Swords, ArrowRight, ArrowLeft,
-  Sparkles, AlertTriangle, RotateCcw, Shield, Lock,
+  Sparkles, AlertTriangle, RotateCcw, Shield, Lock, ChevronDown, FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useProjectManifest } from '@/hooks/useProjectManifest';
 import { LENS_CONFIGS, generateLensProposal, getLensSyncFields, LENS_UPSTREAM_DEPENDENCIES, type LensId, type GapReport, type LensProposalResult } from '@/lib/agents/lens-protocols';
 import { LENS_ORDER } from '@/types/lenses';
-import { generateCritiquePoints, generateAllDefenses, adjudicateAllPoints } from '@/lib/agents/gauntlet-agents';
+import { generateCritiquePoints, generateAllDefenses, adjudicateAllPoints, shouldIssueGapReport, generateJuryGapReport } from '@/lib/agents/gauntlet-agents';
 import { calculateLensScore } from '@/types/debate';
 import { DebateTable } from '@/components/DebateTable';
 import { PeopleLensForm } from '@/components/PeopleLensForm';
 import { getDirtyLenses, isLensDirty, getDownstreamLenses, getAffectedDownstreamLenses, calculateChainReaction, type DirtyLens, type ChainReaction } from '@/lib/dirty-state';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import type { GauntletLensState, GauntletLensStatus } from '@/types/database';
 import type { DebatePoint } from '@/types/debate';
+
+type RerunMode = 'full' | 'visionary-jury' | 'jury-only';
 
 // Icon mapping for lens configs
 const LENS_ICONS: Record<LensId, React.ElementType> = {
@@ -57,8 +66,16 @@ export default function Gauntlet() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chainReactionWarning, setChainReactionWarning] = useState<ChainReaction | null>(null);
+  const [pendingRerunMode, setPendingRerunMode] = useState<RerunMode>('full');
   const [gapReport, setGapReport] = useState<GapReport | null>(null);
   const [previousGapReport, setPreviousGapReport] = useState<GapReport | null>(null);
+  const [showIdeaPanel, setShowIdeaPanel] = useState(false);
+
+  // Refs to avoid stale closures in async chains (defense/judging persist calls)
+  const lensStatesRef = useRef<Record<string, GauntletLensState>>({});
+  lensStatesRef.current = lensStates;
+  const activeLensRef = useRef<LensId>(activeLens);
+  activeLensRef.current = activeLens;
 
   // Dependency checking: check if all upstream lenses are resolved
   const getUnresolvedDependencies = useCallback((lensId: LensId): LensId[] => {
@@ -91,6 +108,7 @@ export default function Gauntlet() {
   // Reset local state and cancel in-flight chains when project ID changes
   useEffect(() => {
     runSessionRef.current += 1;
+    hasHydratedRef.current = false; // Allow re-hydration for new project
     setLensStates({});
     setIsProcessing(false);
     setIsRegenerating(false);
@@ -101,20 +119,44 @@ export default function Gauntlet() {
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hydrate lens states from manifest (or clear if none)
+  // Only restore activeLens on INITIAL load (not during background chain updates)
+  const hasHydratedRef = useRef(false);
   useEffect(() => {
     if (!currentProject) return;
     if (currentProject.manifest?.gauntlet_lenses) {
       setLensStates(currentProject.manifest.gauntlet_lenses);
+      // Restore persisted gap report for the CURRENT active lens (not the manifest's)
+      const lenses = currentProject.manifest.gauntlet_lenses;
+      const currentLens = activeLensRef.current;
+      const lensState = lenses[currentLens];
+      if (lensState?.gapReport) {
+        setGapReport(lensState.gapReport);
+      }
     } else {
       setLensStates({});
     }
-    if (currentProject.manifest?.gauntlet_active_lens) {
+    // Only restore saved active lens on FIRST hydration or when there's no step param.
+    // Skip if a debate chain is running (isProcessing) to prevent snapping the user away.
+    if (!hasHydratedRef.current && !stepParam && currentProject.manifest?.gauntlet_active_lens) {
       setActiveLens(currentProject.manifest.gauntlet_active_lens as LensId);
     }
-  }, [currentProject]);
+    hasHydratedRef.current = true;
+  }, [currentProject]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Get current lens state
-  const currentLensState = lensStates[activeLens] || { status: 'pending' as const };
+  // Get current lens state — defensive: ensure status is always valid
+  const rawLensState = lensStates[activeLens];
+  const currentLensState: GauntletLensState = rawLensState && rawLensState.status
+    ? rawLensState
+    : { status: 'pending' as const };
+
+  // Helper: switch to a lens and restore its persisted gap report (if any)
+  const switchToLens = useCallback((lensId: LensId) => {
+    setActiveLens(lensId);
+    setShowIdeaPanel(false);
+    setPreviousGapReport(null);
+    const state = lensStates[lensId];
+    setGapReport(state?.gapReport || null);
+  }, [lensStates]);
 
   // Debug: Log whenever currentLensState changes
   useEffect(() => {
@@ -126,22 +168,24 @@ export default function Gauntlet() {
     });
   }, [activeLens, currentLensState]);
 
-  // Persist lens state changes
+  // Persist lens state changes — uses refs to avoid stale closures in async chains
   const persistLensState = useCallback(async (lensId: LensId, state: GauntletLensState) => {
     console.log('[Gauntlet] persistLensState called:', {
       lensId,
-      oldState: lensStates[lensId]?.userEdit?.substring(0, 50),
+      oldState: lensStatesRef.current[lensId]?.userEdit?.substring(0, 50),
       newState: state.userEdit?.substring(0, 50),
     });
-    const updated = { ...lensStates, [lensId]: state };
+    // Read the LATEST lens states from the ref, not the stale closure
+    const updated = { ...lensStatesRef.current, [lensId]: state };
     setLensStates(updated);
     console.log('[Gauntlet] setLensStates called with new state');
+    // Use the ref for active lens so background chains don't hijack user navigation
     await updateManifest({
       gauntlet_lenses: updated,
-      gauntlet_active_lens: lensId,
+      gauntlet_active_lens: activeLensRef.current,
     });
     console.log('[Gauntlet] updateManifest completed');
-  }, [lensStates, updateManifest]);
+  }, [updateManifest]);
 
   // Get pitch text from manifest
   const getPitch = (): string => {
@@ -208,16 +252,15 @@ export default function Gauntlet() {
 
       console.log('[Gauntlet] API returned result:', result);
 
-      // Handle Gap Report
+      // Neutral pipeline: proposals always succeed.
+      // Legacy safety: if old Langfuse prompts return gap_detected, log and treat as content.
       if (result.status === 'gap_detected') {
-        console.log('[Gauntlet] Gap detected:', result.gapReport);
-        setGapReport(result.gapReport);
-        setIsRegenerating(false);
-        return;
+        console.warn('[Gauntlet] Legacy gap_detected received during neutral pipeline — treating as content');
       }
 
-      // Handle successful proposal
-      const content = result.content;
+      const content = result.status === 'gap_detected'
+        ? (result.gapReport?.reason || 'Draft could not be generated')
+        : result.content;
 
       let newState: GauntletLensState;
       if (activeLens === 'monopoly') {
@@ -276,12 +319,6 @@ export default function Gauntlet() {
     }
   };
 
-  // Handle "Edit Idea" - go back to refine the pitch
-  const handleEditIdea = () => {
-    setGapReport(null);
-    navigate(`/forge/${id}`);
-  };
-
   const handleSelectProposal = async (proposal: string) => {
     const state = lensStates[activeLens];
     if (!state) return;
@@ -307,7 +344,16 @@ export default function Gauntlet() {
     setGapReport(null);
     setPreviousGapReport(null);
     const session = ++runSessionRef.current;
-    const state: GauntletLensState = { ...currentLensState, status: 'attacking', debatePoints: [], debateStatus: 'attacking' };
+    // START SESSION: Generate a new Langfuse session ID for this debate
+    const sessionId = crypto.randomUUID();
+    const state: GauntletLensState = {
+      ...currentLensState,
+      status: 'attacking',
+      debatePoints: [],
+      debateStatus: 'attacking',
+      gapReport: undefined, // Explicitly clear persisted gap report from previous debate
+      sessionId
+    };
     await persistLensState(activeLens, state);
     // Auto-start the attack phase
     await handleRunAttack(state, session);
@@ -329,7 +375,8 @@ export default function Gauntlet() {
         activeLens,
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
-        getPitch()
+        getPitch(),
+        state.sessionId
       );
       if (s !== runSessionRef.current) return; // stale — abort
       const newState: GauntletLensState = {
@@ -364,7 +411,8 @@ export default function Gauntlet() {
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
         getPitch(),
-        points
+        points,
+        state.sessionId
       );
       if (s !== runSessionRef.current) return; // stale — abort
       const newState: GauntletLensState = {
@@ -398,9 +446,52 @@ export default function Gauntlet() {
         activeLens,
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
-        points
+        points,
+        state.sessionId
       );
       if (s !== runSessionRef.current) return; // stale — abort
+
+      // === POST-JURY GAP REPORT CHECK ===
+      // If any high-severity point was lost, the Jury issues a Gap Report
+      // instead of resolving the lens.
+      if (shouldIssueGapReport(activeLens, judged)) {
+        console.log('[Gauntlet] Jury issuing gap report for:', activeLens);
+        try {
+          const juryGapReport = await generateJuryGapReport(
+            activeLens,
+            currentProject?.manifest || {},
+            state.userEdit || state.proposal || '',
+            judged,
+            state.sessionId
+          );
+          if (s !== runSessionRef.current) return; // stale — abort
+
+          // Persist debate points AND gap report — keep lens in editing status
+          const gapState: GauntletLensState = {
+            ...state,
+            status: 'editing',
+            debatePoints: judged,
+            debateStatus: 'resolved',
+            lensScore: calculateLensScore(judged),
+            gapReport: juryGapReport,
+          };
+          // Use refs to avoid stale closure
+          const updated = { ...lensStatesRef.current, [activeLens]: gapState };
+          setLensStates(updated);
+          await updateManifest({
+            gauntlet_lenses: updated,
+            gauntlet_active_lens: activeLensRef.current,
+          });
+
+          // Show the gap report UI
+          setGapReport(juryGapReport);
+          return;
+        } catch (gapErr) {
+          console.error('[Gauntlet] Failed to generate jury gap report, resolving normally:', gapErr);
+          // Fall through to normal resolution if gap report generation fails
+        }
+      }
+
       const score = calculateLensScore(judged);
       const resolvedText = state.userEdit || state.proposal || '';
       const newState: GauntletLensState = {
@@ -408,7 +499,7 @@ export default function Gauntlet() {
         status: 'resolved',
         debatePoints: judged,
         debateStatus: 'resolved',
-        kScore: score,
+        lensScore: score,
         resolvedAt: new Date().toISOString(),
       };
 
@@ -416,12 +507,12 @@ export default function Gauntlet() {
       // This enables downstream lenses to reference committed upstream decisions
       const syncFields = getLensSyncFields(activeLens, resolvedText);
 
-      // Persist lens state AND sync fields in one update
-      const updated = { ...lensStates, [activeLens]: newState };
+      // Persist lens state AND sync fields in one update — use refs for fresh state
+      const updated = { ...lensStatesRef.current, [activeLens]: newState };
       setLensStates(updated);
       await updateManifest({
         gauntlet_lenses: updated,
-        gauntlet_active_lens: activeLens,
+        gauntlet_active_lens: activeLensRef.current,
         ...syncFields,
       });
     } catch (err) {
@@ -444,12 +535,8 @@ export default function Gauntlet() {
         getPitch(),
         formattedInput
       );
-      // People lens doesn't use binary check, so it should always be success
-      if (result.status === 'gap_detected') {
-        setError('Unexpected gap report for People lens');
-        return;
-      }
-      const proposal = result.content;
+      // Neutral pipeline: all lenses return success
+      const proposal = result.status === 'success' ? result.content : 'Draft could not be generated';
       const newState: GauntletLensState = { status: 'editing', proposal, userEdit: proposal };
       await persistLensState('people', newState);
     } catch (err) {
@@ -463,13 +550,9 @@ export default function Gauntlet() {
   const navigateLens = (direction: 'next' | 'prev') => {
     const idx = LENS_ORDER.indexOf(activeLens);
     if (direction === 'next' && idx < LENS_ORDER.length - 1) {
-      setActiveLens(LENS_ORDER[idx + 1]);
-      setGapReport(null); // Clear gap report when changing lens
-      setPreviousGapReport(null);
+      switchToLens(LENS_ORDER[idx + 1]);
     } else if (direction === 'prev' && idx > 0) {
-      setActiveLens(LENS_ORDER[idx - 1]);
-      setGapReport(null); // Clear gap report when changing lens
-      setPreviousGapReport(null);
+      switchToLens(LENS_ORDER[idx - 1]);
     }
   };
 
@@ -486,78 +569,101 @@ export default function Gauntlet() {
     }
   };
 
-  // Handle "Concede & Finish Venture" - early exit due to failed lens
-  const handleConcedeVenture = async () => {
-    if (!currentProject) return;
-
-    // Preserve the user's hypothesis if they selected one
-    const currentState = lensStates[activeLens];
-    const hypothesis = currentState?.userEdit || currentState?.proposal;
-
-    // Save the current state with the hypothesis
-    const updatedLenses = {
-      ...lensStates,
-      [activeLens]: {
-        ...currentState,
-        status: 'pending' as const,
-        userEdit: hypothesis, // Preserve what they were working with
-      },
-    };
-
-    // Update manifest with early exit info
-    await updateManifest({
-      venture_status: 'resolved',
-      early_exit_reason: activeLens,
-      gauntlet_lenses: updatedLenses,
-    });
-
-    // Navigate to War Room
-    navigate(`/projects/${currentProject.id}`);
-  };
-
-  // Check for chain reaction when attempting to reopen a lens
-  const handleReopenRequest = (lensId: LensId) => {
+  // Check for chain reaction when attempting to rerun a lens
+  const handleRerunRequest = (lensId: LensId, mode: RerunMode) => {
     const chainReaction = calculateChainReaction(lensId, currentProject?.manifest || {});
     if (chainReaction.affectedLenses.length > 0) {
+      setPendingRerunMode(mode);
       setChainReactionWarning(chainReaction);
     } else {
-      executeReopen(lensId);
+      executeRerun(lensId, mode);
     }
   };
 
-  // Execute the actual reopen with cascade invalidation
-  const executeReopen = async (lensId: LensId) => {
-    const affectedLenses = getAffectedDownstreamLenses(lensId, currentProject?.manifest || {});
+  // Execute the actual rerun with cascade invalidation
+  const executeRerun = async (lensId: LensId, mode: RerunMode) => {
     const currentState = lensStates[lensId];
 
-    // Reset the target lens to editing state
-    const newState: GauntletLensState = {
-      ...currentState,
-      status: 'editing',
-      debatePoints: undefined,
-      debateStatus: undefined,
-      kScore: undefined,
-      resolvedAt: undefined,
-    };
+    if (mode === 'full') {
+      // Full re-run: reset to editing, clear all debate data
+      const newState: GauntletLensState = {
+        ...currentState,
+        status: 'editing',
+        debatePoints: undefined,
+        debateStatus: undefined,
+        lensScore: undefined,
+        kScore: undefined,
+        resolvedAt: undefined,
+      };
 
-    // Build updated lens states - invalidate downstream lenses by marking them with new dirty timestamp
-    const updated = { ...lensStates, [lensId]: newState };
+      const updated = { ...lensStates, [lensId]: newState };
+      setLensStates(updated);
+      await updateManifest({
+        gauntlet_lenses: updated,
+        gauntlet_active_lens: lensId,
+      });
+    } else if (mode === 'visionary-jury') {
+      // Keep critique points, strip defense + verdict, re-run from defending
+      const session = ++runSessionRef.current;
+      const sessionId = crypto.randomUUID();
+      const strippedPoints = (currentState.debatePoints || []).map(p => ({
+        ...p,
+        defense: undefined,
+        verdict: undefined,
+      }));
 
-    // Mark downstream resolved lenses as needing re-debate (set their resolvedAt to undefined)
-    // This creates a dirty state because their upstream lens was just reopened
-    for (const downstreamId of affectedLenses) {
-      const downstreamState = updated[downstreamId];
-      if (downstreamState?.status === 'resolved') {
-        // We don't actually reset them - the dirty state detection will catch them
-        // because their upstream (lensId) will have a newer resolvedAt when re-resolved
-      }
+      const newState: GauntletLensState = {
+        ...currentState,
+        status: 'defending',
+        debatePoints: strippedPoints,
+        debateStatus: 'defending',
+        lensScore: undefined,
+        kScore: undefined,
+        resolvedAt: undefined,
+        sessionId,
+      };
+
+      const updated = { ...lensStates, [lensId]: newState };
+      setLensStates(updated);
+      await updateManifest({
+        gauntlet_lenses: updated,
+        gauntlet_active_lens: lensId,
+      });
+
+      // Auto-start defense phase (which auto-chains to judging)
+      setIsProcessing(true);
+      await handleRunDefense(newState, session);
+    } else if (mode === 'jury-only') {
+      // Keep critiques + defenses, strip verdict, re-run from judging
+      const session = ++runSessionRef.current;
+      const sessionId = crypto.randomUUID();
+      const strippedPoints = (currentState.debatePoints || []).map(p => ({
+        ...p,
+        verdict: undefined,
+      }));
+
+      const newState: GauntletLensState = {
+        ...currentState,
+        status: 'judging',
+        debatePoints: strippedPoints,
+        debateStatus: 'judging',
+        lensScore: undefined,
+        kScore: undefined,
+        resolvedAt: undefined,
+        sessionId,
+      };
+
+      const updated = { ...lensStates, [lensId]: newState };
+      setLensStates(updated);
+      await updateManifest({
+        gauntlet_lenses: updated,
+        gauntlet_active_lens: lensId,
+      });
+
+      // Auto-start judging phase
+      setIsProcessing(true);
+      await handleRunJudging(newState, session);
     }
-
-    setLensStates(updated);
-    await updateManifest({
-      gauntlet_lenses: updated,
-      gauntlet_active_lens: lensId,
-    });
 
     setChainReactionWarning(null);
   };
@@ -580,19 +686,6 @@ export default function Gauntlet() {
       <header className="border-b border-zinc-800/60 bg-zinc-950 sticky top-0 z-10">
         <div className="px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Back to Forge button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/forge/${id}`)}
-              className="text-zinc-500 hover:text-zinc-300"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-              Edit Idea
-            </Button>
-
-            <div className="h-4 w-px bg-zinc-800" />
-
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-red-600 flex items-center justify-center">
               <Swords className="w-4 h-4 text-white" />
             </div>
@@ -649,6 +742,32 @@ export default function Gauntlet() {
       <div className="flex-1 flex">
         {/* Left: Lens Navigation */}
         <nav className="w-56 border-r border-zinc-800/60 flex flex-col py-3">
+          {/* Idea tab */}
+          <button
+            onClick={() => setShowIdeaPanel(true)}
+            className={cn(
+              'flex items-center gap-3 px-4 py-2.5 text-left transition-colors w-full mb-1',
+              showIdeaPanel
+                ? 'bg-zinc-800/60 border-r-2 border-r-amber-400'
+                : 'hover:bg-zinc-800/30',
+            )}
+          >
+            <div className={cn(
+              'w-6 h-6 rounded-md flex items-center justify-center shrink-0',
+              showIdeaPanel ? 'bg-amber-500/10' : 'bg-zinc-800/50'
+            )}>
+              <FileText className={cn('w-3.5 h-3.5', showIdeaPanel ? 'text-amber-400' : 'text-zinc-500')} />
+            </div>
+            <span className={cn(
+              'text-xs font-medium',
+              showIdeaPanel ? 'text-zinc-200' : 'text-zinc-400'
+            )}>
+              Idea
+            </span>
+          </button>
+
+          <div className="h-px bg-zinc-800/40 mx-4 mb-1" />
+
           {LENS_ORDER.map((lensId, idx) => {
             const config = LENS_CONFIGS[lensId];
             const Icon = LENS_ICONS[lensId];
@@ -661,7 +780,7 @@ export default function Gauntlet() {
             return (
               <button
                 key={lensId}
-                onClick={() => { setActiveLens(lensId); setGapReport(null); setPreviousGapReport(null); }}
+                onClick={() => switchToLens(lensId)}
                 className={cn(
                   'flex items-center gap-3 px-4 py-2.5 text-left transition-colors w-full',
                   isActive
@@ -730,35 +849,80 @@ export default function Gauntlet() {
             <div className="mt-auto px-4 py-3 border-t border-zinc-800/60">
               <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2">Scores</p>
               <div className="space-y-1">
-                {LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').map(lensId => (
-                  <div key={lensId} className="flex items-center justify-between">
-                    <span className="text-[11px] text-zinc-500">{LENS_CONFIGS[lensId].title}</span>
-                    <span className={cn(
-                      'text-[11px] font-mono',
-                      (lensStates[lensId]?.kScore || 0) >= 70 ? 'text-green-400' :
-                        (lensStates[lensId]?.kScore || 0) >= 50 ? 'text-amber-400' :
-                          'text-red-400'
-                    )}>
-                      {lensStates[lensId]?.kScore || '--'}
-                    </span>
-                  </div>
-                ))}
+                {LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').map(lensId => {
+                  const s = lensStates[lensId];
+                  const score = s?.lensScore ?? s?.kScore ?? 0;
+                  return (
+                    <div key={lensId} className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-500">{LENS_CONFIGS[lensId].title}</span>
+                      <span className={cn(
+                        'text-[11px] font-mono',
+                        score >= 70 ? 'text-green-400' :
+                          score >= 50 ? 'text-amber-400' :
+                            'text-red-400'
+                      )}>
+                        {score || '--'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
         </nav>
 
         {/* Right: Active Lens Content */}
+        <ErrorBoundary fallbackMessage="This lens encountered an error">
         <div className="flex-1 flex flex-col overflow-hidden">
+          {showIdeaPanel ? (
+            <>
+              {/* Idea Panel Header */}
+              <div className="px-6 py-4 border-b border-zinc-800/40">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-200">Idea</h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">{currentProject?.title || 'Untitled'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Idea Panel Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-3xl mx-auto space-y-6">
+                  <div className="border border-zinc-800 rounded-lg p-5 bg-zinc-900/30">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Vision</span>
+                    <p className="text-sm text-zinc-200 mt-2 whitespace-pre-wrap leading-relaxed">
+                      {currentProject?.manifest?.refined_vision
+                        || currentProject?.manifest?.raw_vision
+                        || currentProject?.pitch
+                        || currentProject?.title
+                        || 'No idea text available.'}
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    onClick={() => navigate(`/forge/${id}`)}
+                    className="text-zinc-400 hover:text-zinc-200"
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-2" />
+                    Edit in Forge
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
           {/* Lens Header */}
-          <div className={cn('px-6 py-4 border-b border-zinc-800/40', lensConfig.bgColor)}>
+          <div className="px-6 py-4 border-b border-zinc-800/40">
             <div className="flex items-center gap-3">
               <LensIcon className={cn('w-5 h-5', lensConfig.color)} />
               <div>
-                <h2 className={cn('text-sm font-semibold', lensConfig.color)}>
+                <h2 className="text-sm font-semibold text-zinc-200">
                   Lens {activeLensIdx + 1}: {lensConfig.title} — {lensConfig.subtitle}
                 </h2>
-                <p className="text-xs text-zinc-400 mt-0.5">{lensConfig.question}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{lensConfig.question}</p>
               </div>
             </div>
           </div>
@@ -782,6 +946,7 @@ export default function Gauntlet() {
                       status: 'editing',
                       debatePoints: undefined,
                       debateStatus: undefined,
+                      lensScore: undefined,
                       kScore: undefined,
                       resolvedAt: undefined,
                     };
@@ -807,15 +972,97 @@ export default function Gauntlet() {
 
             {/* GAP REPORT STATE */}
             {gapReport && (
-              <GapReportCard
-                gapReport={gapReport}
-                lensConfig={lensConfig}
-                onEditIdea={handleEditIdea}
-                onForceHypothesis={handleForceFromHypothesis}
-                onRegenerate={handleGenerateProposal}
-                onConcedeVenture={handleConcedeVenture}
-                isRegenerating={isRegenerating}
-              />
+              <div className="max-w-3xl mx-auto space-y-6">
+                {/* 1. Proposal at the very top */}
+                {(currentLensState.userEdit || currentLensState.proposal) && (
+                  <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Proposal</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleGenerateProposal}
+                        disabled={isRegenerating}
+                        className="text-zinc-500 hover:text-zinc-300 h-7"
+                      >
+                        {isRegenerating ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                            Regenerating...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                            Regenerate Proposal
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                      {currentLensState.userEdit || currentLensState.proposal}
+                    </p>
+                  </div>
+                )}
+
+                {/* 2. Lens score with re-run debate, then debate points */}
+                {currentLensState.debatePoints && currentLensState.debatePoints.length > 0 && (
+                  <>
+                    {/* Lens score row + re-run button */}
+                    {(() => {
+                      const pts = currentLensState.debatePoints;
+                      const judgedCount = pts.filter(p => p.verdict).length;
+                      if (judgedCount === 0) return null;
+                      const score = currentLensState.lensScore ?? currentLensState.kScore ?? calculateLensScore(pts);
+                      return (
+                        <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Lens Score</span>
+                            <span className={cn(
+                              'text-xl font-bold tabular-nums',
+                              score >= 70 ? 'text-green-400' :
+                              score >= 50 ? 'text-amber-400' :
+                              score >= 30 ? 'text-orange-400' :
+                              'text-red-400'
+                            )}>
+                              {score}
+                            </span>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-300">
+                                <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                                Re-run Debate
+                                <ChevronDown className="w-3 h-3 ml-1.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-72">
+                              <DropdownMenuItem onClick={() => handleRerunRequest(activeLens, 'full')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+                                <span className="text-xs font-medium text-zinc-200">Full Re-run</span>
+                                <span className="text-[10px] text-zinc-500">Regenerate all debate phases from scratch</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRerunRequest(activeLens, 'visionary-jury')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+                                <span className="text-xs font-medium text-zinc-200">Re-run Defense + Jury</span>
+                                <span className="text-[10px] text-zinc-500">Keep critiques, regenerate defense and verdict</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRerunRequest(activeLens, 'jury-only')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+                                <span className="text-xs font-medium text-zinc-200">Re-run Jury Only</span>
+                                <span className="text-[10px] text-zinc-500">Keep critiques and defenses, regenerate verdict only</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      );
+                    })()}
+                    <DebateTable points={currentLensState.debatePoints} hideScoreSummary />
+                  </>
+                )}
+
+                {/* 3. Gap report + hypotheses */}
+                <GapReportCard
+                  gapReport={gapReport}
+                  onForceHypothesis={handleForceFromHypothesis}
+                />
+              </div>
             )}
 
             {/* PENDING STATE */}
@@ -854,7 +1101,6 @@ export default function Gauntlet() {
                 onEdit={handleUserEdit}
                 onApprove={handleApproveEdit}
                 onRegenerate={handleGenerateProposal}
-                lensConfig={lensConfig}
                 showBackToSelection={activeLens === 'monopoly' && !!currentLensState.proposals?.length}
                 onBackToSelection={async () => {
                   const newState: GauntletLensState = {
@@ -878,7 +1124,6 @@ export default function Gauntlet() {
                   userEdit={currentLensState.userEdit || ''}
                   isProcessing={isProcessing}
                   debateStatus={currentLensState.debateStatus || currentLensState.status}
-                  lensConfig={lensConfig}
                   onResume={() => {
                     const session = ++runSessionRef.current;
                     const status = currentLensState.debateStatus || currentLensState.status;
@@ -903,8 +1148,7 @@ export default function Gauntlet() {
                 downstreamLenses={getDownstreamLenses(activeLens).filter(
                   l => lensStates[l]?.status === 'resolved'
                 )}
-                isDirty={dirtyLensIds.has(activeLens)}
-                onReopen={() => handleReopenRequest(activeLens)}
+                onRerun={(mode) => handleRerunRequest(activeLens, mode)}
               />
             )}
           </div>
@@ -935,14 +1179,17 @@ export default function Gauntlet() {
               <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
             </Button>
           </div>
+            </>
+          )}
         </div>
+        </ErrorBoundary>
       </div>
 
       {/* Chain Reaction Warning Modal */}
       {chainReactionWarning && (
         <ChainReactionModal
           chainReaction={chainReactionWarning}
-          onConfirm={() => executeReopen(chainReactionWarning.modifiedLens)}
+          onConfirm={() => executeRerun(chainReactionWarning.modifiedLens, pendingRerunMode)}
           onCancel={() => setChainReactionWarning(null)}
         />
       )}
@@ -1015,10 +1262,7 @@ function LensSelectingState({
           <button
             key={idx}
             onClick={() => onSelect(proposal)}
-            className={cn(
-              "group relative flex flex-col p-5 rounded-xl border bg-zinc-900/40 text-left transition-all hover:border-amber-500/50 hover:bg-zinc-900/60 hover:shadow-lg hover:shadow-amber-500/5",
-              lensConfig.borderColor
-            )}
+            className="group relative flex flex-col p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 text-left transition-all hover:border-zinc-600 hover:bg-zinc-900/60"
           >
             <div className="mb-4 flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Option {idx + 1}</span>
@@ -1106,8 +1350,8 @@ function LensPendingState({
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center mb-4', config.bgColor, 'border', config.borderColor)}>
-        <Sparkles className={cn('w-7 h-7', config.color)} />
+      <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center mb-4', config.bgColor, 'border', config.borderColor)}>
+        <Sparkles className={cn('w-6 h-6', config.color)} />
       </div>
       <h3 className="text-lg font-medium text-zinc-200 mb-2">
         Ready to analyze: {config.title}
@@ -1147,8 +1391,8 @@ function DependencyBlocker({
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-zinc-800/50 border border-zinc-700/50')}>
-        <Icon className="w-7 h-7 text-zinc-500" />
+      <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-zinc-800/50 border border-zinc-700/50')}>
+        <Icon className="w-6 h-6 text-zinc-500" />
       </div>
       <h3 className="text-lg font-medium text-zinc-400 mb-2">
         {config.title} is blocked
@@ -1184,11 +1428,6 @@ function DependencyBlocker({
           })}
         </div>
       </div>
-
-      <p className="text-xs text-zinc-600 max-w-sm">
-        Each lens builds upon prior decisions to ensure intellectual consistency
-        across your venture thesis.
-      </p>
     </div>
   );
 }
@@ -1201,7 +1440,6 @@ function LensEditingState({
   onEdit,
   onApprove,
   onRegenerate,
-  lensConfig,
   showBackToSelection,
   onBackToSelection,
   showBackToHypotheses,
@@ -1214,7 +1452,6 @@ function LensEditingState({
   onEdit: (text: string) => void;
   onApprove: () => void;
   onRegenerate?: () => void;
-  lensConfig: typeof LENS_CONFIGS[LensId];
   showBackToSelection?: boolean;
   onBackToSelection?: () => void;
   showBackToHypotheses?: boolean;
@@ -1223,41 +1460,10 @@ function LensEditingState({
   const isModified = userEdit !== proposal;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>AI-generated proposal — edit below to refine</span>
-          {isModified && (
-            <span className="text-amber-400 ml-2">(modified)</span>
-          )}
-        </div>
+    <div className="max-w-3xl mx-auto space-y-4">
+      {/* Navigation back buttons */}
+      {(showBackToSelection || showBackToHypotheses) && (
         <div className="flex items-center gap-2">
-          {/* Hide Regenerate button when user came from gap report hypothesis */}
-          {onRegenerate && !showBackToHypotheses && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                console.log('[LensEditingState] Regenerate button clicked');
-                onRegenerate();
-              }}
-              disabled={isRegenerating || isProcessing}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
-            >
-              {isRegenerating ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  Regenerating...
-                </>
-              ) : (
-                <>
-                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                  Regenerate
-                </>
-              )}
-            </Button>
-          )}
           {showBackToSelection && onBackToSelection && (
             <Button
               variant="ghost"
@@ -1274,22 +1480,55 @@ function LensEditingState({
               variant="ghost"
               size="sm"
               onClick={onBackToHypotheses}
-              className="text-xs text-orange-400 hover:text-orange-300"
+              className="text-xs text-zinc-500 hover:text-zinc-300"
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
               Back to Hypotheses
             </Button>
           )}
         </div>
-      </div>
+      )}
 
-      <div className={cn('border rounded-lg overflow-hidden', lensConfig.borderColor)}>
-        <textarea
-          value={userEdit}
-          onChange={e => onEdit(e.target.value)}
-          className="w-full h-48 bg-zinc-900/50 text-zinc-200 text-sm leading-relaxed p-4 resize-none outline-none"
-          placeholder="Edit the proposal..."
-        />
+      {/* Textarea with regenerate tucked under it */}
+      <div>
+        <div className="border border-zinc-800 rounded-lg overflow-hidden">
+          <textarea
+            value={userEdit}
+            onChange={e => onEdit(e.target.value)}
+            className="w-full h-48 bg-zinc-900/50 text-zinc-200 text-sm leading-relaxed p-4 resize-none outline-none"
+            placeholder="Edit the proposal..."
+          />
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-2 text-[11px] text-zinc-600">
+            {isModified && <span className="text-amber-400">(modified)</span>}
+          </div>
+          {/* Regenerate — right-aligned, directly under the textarea */}
+          {onRegenerate && !showBackToHypotheses && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                console.log('[LensEditingState] Regenerate button clicked');
+                onRegenerate();
+              }}
+              disabled={isRegenerating || isProcessing}
+              className="text-xs text-zinc-500 hover:text-zinc-300 h-7"
+            >
+              {isRegenerating ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                  Regenerate Proposal
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -1318,14 +1557,12 @@ function LensDebatingState({
   userEdit,
   isProcessing,
   debateStatus,
-  lensConfig,
   onResume,
 }: {
   points: DebatePoint[];
   userEdit: string;
   isProcessing: boolean;
   debateStatus: string;
-  lensConfig: typeof LENS_CONFIGS[LensId];
   onResume?: () => void;
 }) {
   const loadingPhase = isProcessing
@@ -1341,7 +1578,7 @@ function LensDebatingState({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* User's approved proposal */}
-      <div className={cn('border rounded-lg p-4 text-xs', lensConfig.borderColor, lensConfig.bgColor)}>
+      <div className="border border-zinc-800 rounded-lg p-4 text-xs bg-zinc-900/30">
         <span className="text-zinc-500 uppercase tracking-wider text-[10px] font-medium">Your proposal:</span>
         <p className="text-zinc-300 mt-1 whitespace-pre-wrap line-clamp-4">{userEdit}</p>
       </div>
@@ -1398,46 +1635,69 @@ function PhaseStep({ label, active, done, stalled }: { label: string; active: bo
 function LensResolvedState({
   lensState,
   lensConfig,
-  onReopen,
+  onRerun,
   downstreamLenses,
-  isDirty,
 }: {
   lensState: GauntletLensState;
   lensConfig: typeof LENS_CONFIGS[LensId];
-  onReopen: () => void;
+  onRerun: (mode: RerunMode) => void;
   downstreamLenses: LensId[];
-  isDirty: boolean;
 }) {
   const points = lensState.debatePoints || [];
-  const score = lensState.kScore || 0;
+  const score = lensState.lensScore ?? lensState.kScore ?? 0;
   const visionaryWins = points.filter(p => p.verdict?.winner === 'visionary').length;
   const skepticWins = points.filter(p => p.verdict?.winner === 'skeptic').length;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Resolved badge */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center">
-          <CheckCircle2 className="w-5 h-5 text-green-400" />
-        </div>
-        <div>
-          <h3 className="text-sm font-medium text-green-400">Lens Resolved</h3>
-          <p className="text-xs text-zinc-500">
-            Score: <span className={cn(
-              'font-mono font-semibold',
-              score >= 70 ? 'text-green-400' :
-                score >= 50 ? 'text-amber-400' : 'text-red-400'
-            )}>{score}</span>
-            <span className="text-zinc-600 ml-2">
-              ({visionaryWins} defended, {skepticWins} conceded)
-            </span>
-            {lensState.resolvedAt && (
-              <span className="ml-2 text-zinc-600">
-                {new Date(lensState.resolvedAt).toLocaleDateString()}
+      {/* Resolved badge + Re-run dropdown */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+          <div>
+            <h3 className="text-sm font-medium text-green-400">Lens Resolved</h3>
+            <p className="text-xs text-zinc-500">
+              Lens Score: <span className={cn(
+                'font-mono font-semibold',
+                score >= 70 ? 'text-green-400' :
+                  score >= 50 ? 'text-amber-400' : 'text-red-400'
+              )}>{score}</span>
+              <span className="text-zinc-600 ml-2">
+                ({visionaryWins} defended, {skepticWins} conceded)
               </span>
-            )}
-          </p>
+              {lensState.resolvedAt && (
+                <span className="ml-2 text-zinc-600">
+                  {new Date(lensState.resolvedAt).toLocaleDateString()}
+                </span>
+              )}
+            </p>
+          </div>
         </div>
+
+        {/* Re-run dropdown — top-right, always visible */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-300">
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+              Re-run Debate
+              <ChevronDown className="w-3 h-3 ml-1.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <DropdownMenuItem onClick={() => onRerun('full')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+              <span className="text-xs font-medium text-zinc-200">Full Re-run</span>
+              <span className="text-[10px] text-zinc-500">Regenerate all debate phases from scratch</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRerun('visionary-jury')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+              <span className="text-xs font-medium text-zinc-200">Re-run Defense + Jury</span>
+              <span className="text-[10px] text-zinc-500">Keep critiques, regenerate defense and verdict</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRerun('jury-only')} className="flex flex-col items-start gap-0.5 py-2 cursor-pointer">
+              <span className="text-xs font-medium text-zinc-200">Re-run Jury Only</span>
+              <span className="text-[10px] text-zinc-500">Keep critiques and defenses, regenerate verdict only</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Legacy monopoly lens detection */}
@@ -1449,7 +1709,7 @@ function LensResolvedState({
         )}
 
       {/* Final answer */}
-      <div className={cn('border rounded-lg p-4', lensConfig.borderColor, lensConfig.bgColor)}>
+      <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30">
         <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Final Position:</span>
         <p className="text-sm text-zinc-200 mt-2 whitespace-pre-wrap leading-relaxed">
           {lensState.userEdit || lensState.proposal}
@@ -1477,11 +1737,6 @@ function LensResolvedState({
         </div>
       )}
 
-      {/* Reopen */}
-      <Button variant="ghost" size="sm" onClick={onReopen} className="text-zinc-500 hover:text-zinc-300">
-        <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-        Reopen & Re-debate
-      </Button>
     </div>
   );
 }
@@ -1496,52 +1751,31 @@ function LensResolvedState({
 
 function GapReportCard({
   gapReport,
-  lensConfig,
-  onEditIdea,
   onForceHypothesis,
-  onRegenerate,
-  onConcedeVenture,
-  isRegenerating,
 }: {
   gapReport: GapReport;
-  lensConfig: typeof LENS_CONFIGS[LensId];
-  onEditIdea: () => void;
   onForceHypothesis: (hypothesis: string) => void;
-  onRegenerate: () => void;
-  onConcedeVenture: () => void;
-  isRegenerating: boolean;
 }) {
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <>
       {/* Gap Report Header */}
-      <div className="flex items-start gap-4 p-6 bg-orange-500/5 border border-orange-500/20 rounded-xl">
-        <div className="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center shrink-0">
-          <AlertTriangle className="w-6 h-6 text-orange-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-500">Gap Detected</span>
-            <span className={cn('text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded', lensConfig.bgColor, lensConfig.color)}>
-              {lensConfig.title} Lens
-            </span>
-          </div>
-          <h3 className="text-lg font-semibold text-orange-300 mb-2">
+      <div className="px-4 py-3 bg-orange-500/5 border border-orange-500/20 rounded-lg space-y-1.5">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+          <span className="text-sm font-medium text-orange-300">
             Missing: {gapReport.missing_element}
-          </h3>
-          <p className="text-sm text-zinc-400 leading-relaxed">
-            {gapReport.reason}
-          </p>
+          </span>
         </div>
+        <p className="text-xs text-zinc-500 leading-relaxed pl-6">
+          {gapReport.reason}
+        </p>
       </div>
 
       {/* Hypotheses Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-cyan-400" />
-          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
-            Strategic Pivots to Consider
-          </span>
-        </div>
+        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+          Strategic Pivots
+        </span>
 
         <div className="grid gap-3">
           {gapReport.hypotheses.map((hypothesis, idx) => {
@@ -1554,82 +1788,33 @@ function GapReportCard({
               <button
                 key={idx}
                 onClick={() => onForceHypothesis(hypothesis)}
-                className="group flex items-start gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-lg text-left transition-all hover:border-cyan-500/30 hover:bg-zinc-900/60"
+                className="group flex items-start gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-lg text-left transition-all hover:border-zinc-600 hover:bg-zinc-900/60"
               >
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 group-hover:bg-cyan-500/20">
-                  <span className="text-xs font-bold text-cyan-400">{idx + 1}</span>
+                <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 group-hover:bg-zinc-700">
+                  <span className="text-xs font-bold text-zinc-400">{idx + 1}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-cyan-300 block mb-1">
+                  <span className="text-sm font-medium text-zinc-200 block mb-1">
                     {mechanismName}
                   </span>
                   <span className="text-xs text-zinc-500 group-hover:text-zinc-400">
                     {description || 'Click to explore this direction'}
                   </span>
                 </div>
-                <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-cyan-400 shrink-0 mt-1" />
+                <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 shrink-0 mt-1" />
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-col gap-4 pt-4 border-t border-zinc-800/60">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            onClick={onEditIdea}
-            className="text-zinc-400 hover:text-zinc-200"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Edit Idea
-          </Button>
-
-          <Button
-            variant="ghost"
-            onClick={onRegenerate}
-            disabled={isRegenerating}
-            className="text-zinc-500 hover:text-zinc-300"
-          >
-            {isRegenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Regenerating...
-              </>
-            ) : (
-              <>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Regenerate
-              </>
-            )}
-          </Button>
-
-          <div className="flex-1" />
-
-          <span className="text-[10px] text-zinc-600">
-            Select a pivot above to continue, or edit your idea
-          </span>
-        </div>
-
-        {/* Early Exit Option */}
-        <div className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-3">
-          <div className="flex-1">
-            <p className="text-xs text-zinc-400">
-              If this venture is fundamentally flawed, you can archive it and move on.
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            onClick={onConcedeVenture}
-            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20"
-          >
-            <AlertTriangle className="w-4 h-4 mr-2" />
-            Concede & Finish
-          </Button>
-        </div>
+      {/* Helper text */}
+      <div className="text-center">
+        <span className="text-[10px] text-zinc-600">
+          Select a pivot above to continue, or regenerate the proposal
+        </span>
       </div>
-    </div>
+    </>
   );
 }
 

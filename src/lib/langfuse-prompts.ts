@@ -15,7 +15,7 @@ import {
   FALLBACK_GAUNTLET_VISIONARY_SYSTEM,
   FALLBACK_GAUNTLET_JURY_SYSTEM,
   FALLBACK_JURY_MONOPOLY_RUBRIC,
-  // Binary Check Lens Proposal Prompts (Analytic Fidelity)
+  FALLBACK_JURY_GAP_REPORT_SYSTEM,
   FALLBACK_LENS_PROPOSAL_ENGINEERING,
   FALLBACK_LENS_PROPOSAL_TIMING,
   FALLBACK_LENS_PROPOSAL_MONOPOLY,
@@ -151,6 +151,7 @@ export type PromptName =
   | 'gauntlet-skeptic-system'
   | 'gauntlet-visionary-system'
   | 'gauntlet-jury-system'
+  | 'gauntlet-jury-gap-report'
   | `lens-proposal-${LensId}`
   | `lens-protocol-visionary-${LensId}`
   | `lens-protocol-skeptic-${LensId}`
@@ -195,8 +196,7 @@ export {
   FALLBACK_GAUNTLET_VISIONARY_SYSTEM,
   FALLBACK_GAUNTLET_JURY_SYSTEM,
   FALLBACK_JURY_MONOPOLY_RUBRIC,
-  // Binary Check Lens Proposal Prompts (Analytic Fidelity)
-  // Migrate these to Langfuse as: lens-proposal-{engineering|timing|monopoly|distribution}
+  FALLBACK_JURY_GAP_REPORT_SYSTEM,
   FALLBACK_LENS_PROPOSAL_ENGINEERING,
   FALLBACK_LENS_PROPOSAL_TIMING,
   FALLBACK_LENS_PROPOSAL_MONOPOLY,
