@@ -7,6 +7,7 @@ import Auth from "./pages/Auth";
 import NewIdea from "./pages/NewIdea";
 import Dashboard from "./pages/Dashboard";
 import Forge from "./pages/Forge";
+import FrameworkSelection from "./pages/FrameworkSelection";
 import Gauntlet from "./pages/Gauntlet";
 import ProjectDetails from "./pages/ProjectDetails";
 import NotFound from "./pages/NotFound";
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
             <Route path="/new" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
             <Route path="/forge/:id" element={<ProtectedRoute><Forge /></ProtectedRoute>} />
+            <Route path="/frameworks/:id" element={<ProtectedRoute><FrameworkSelection /></ProtectedRoute>} />
             <Route path="/gauntlet/:id" element={<ProtectedRoute><Gauntlet /></ProtectedRoute>} />
             <Route path="/analyze/:projectId" element={<ProtectedRoute><NewIdea /></ProtectedRoute>} />
             <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetails /></ProtectedRoute>} />

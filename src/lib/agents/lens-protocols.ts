@@ -19,7 +19,9 @@ import {
   getLensProposalPromptName,
   getLensVisionaryProtocolName,
   getLensSkepticProtocolName,
+  getStepPromptName,
 } from '@/lib/langfuse-prompts';
+import type { FrameworkDefinition } from '@/lib/frameworks/types';
 
 import { LensId, LENS_ORDER } from '@/types/lenses';
 
@@ -632,4 +634,76 @@ Respond in plain text.`;
   const skepticResponse = await callModel(fullSkepticPrompt, `Skeptic Turn: ${lensId}`);
 
   return { visionary: visionaryResponse, skeptic: skepticResponse };
+}
+
+// ============================================================================
+// FRAMEWORK-AWARE PROPOSAL GENERATION
+// ============================================================================
+
+/**
+ * Generate an AI proposal for a specific step within any framework.
+ * Reads prompts from the framework's stepProtocols.
+ */
+export async function generateStepProposal(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  pitch: string,
+  peopleInput?: string,
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<LensProposalResult> {
+  const stepProtocol = framework.stepProtocols[stepId];
+  if (!stepProtocol) {
+    throw new Error(`No step protocol found for step "${stepId}" in framework "${framework.id}"`);
+  }
+
+  // Build context using the framework's context builder
+  const context = framework.manifestContextBuilder(manifest, stepId, gauntletLenses);
+
+  // Fetch proposal prompt from Langfuse (with local fallback from framework)
+  const langfusePromptName = getStepPromptName(framework, stepId, 'proposal');
+  const promptTemplate = await getPrompt(langfusePromptName, stepProtocol.proposalPrompt);
+
+  // Compile the prompt with context
+  let proposalPrompt = promptTemplate
+    .replace('{MANIFEST}', context)
+    .replace('{{manifest}}', context)
+    .replace('{UPSTREAM_CONTEXT}', context)
+    .replace('{{upstream_context}}', context);
+
+  // Handle people/team input
+  if (peopleInput) {
+    proposalPrompt = proposalPrompt
+      .replace('{PEOPLE_INPUT}', peopleInput)
+      .replace('{{people_input}}', peopleInput);
+  } else {
+    proposalPrompt = proposalPrompt
+      .replace('{PEOPLE_INPUT}', 'Not provided yet - generate based on available context.')
+      .replace('{{people_input}}', 'Not provided yet - generate based on available context.');
+  }
+
+  const fullPrompt = `${proposalPrompt}
+
+FOUNDER'S PITCH:
+${pitch}`;
+
+  try {
+    const model = getModel();
+    const callbacks = getLangfuseCallback(sessionId);
+
+    const response = await model.invoke([
+      new HumanMessage(fullPrompt)
+    ], {
+      callbacks: callbacks ? [callbacks] : undefined,
+      runName: `${framework.name} Proposal: ${stepId}`
+    });
+
+    const rawContent = response.content as string;
+    const content = unwrapLegacyJsonResponse(rawContent);
+    return { status: 'success', content };
+  } catch (error) {
+    console.error(`Step proposal generation failed (${framework.id}/${stepId}):`, error);
+    throw error;
+  }
 }

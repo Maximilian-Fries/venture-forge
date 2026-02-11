@@ -27,6 +27,7 @@ import {
   getLensSkepticProtocolName,
   getLensVisionaryProtocolName,
   getLensJuryProtocolName,
+  getStepPromptName,
 } from '@/lib/langfuse-prompts';
 import {
   FALLBACK_GAUNTLET_SKEPTIC_SYSTEM,
@@ -35,21 +36,39 @@ import {
   FALLBACK_JURY_MONOPOLY_RUBRIC,
   FALLBACK_JURY_GAP_REPORT_SYSTEM,
 } from '@/lib/prompts/defaults';
+import { DynamicRetrievalMode } from '@google/generative-ai';
+import { parseJSON, invokeWithRetry } from './utils';
 import type { GapReport } from './lens-protocols';
+import type { FrameworkDefinition } from '@/lib/frameworks/types';
 
-function getModel() {
+function getModel(useSearch = false) {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your-google-api-key') {
     throw new Error('API key not configured');
   }
 
-  console.log('[Gauntlet] Using model: gemini-2.5-flash');
-  return new ChatGoogleGenerativeAI({
+  const base = new ChatGoogleGenerativeAI({
     model: "gemini-2.5-flash",
     apiKey: apiKey,
     temperature: 0.2,
     maxOutputTokens: 8192,
   });
+
+  if (!useSearch) {
+    return base;
+  }
+
+  console.log('[Gauntlet] Binding Google Search Grounding (threshold 0.7)');
+  return base.bindTools([
+    {
+      googleSearchRetrieval: {
+        dynamicRetrievalConfig: {
+          mode: DynamicRetrievalMode.MODE_DYNAMIC,
+          dynamicThreshold: 0.7,
+        },
+      },
+    },
+  ]);
 }
 
 function buildContext(manifest: VentureManifest): string {
@@ -94,125 +113,6 @@ The founder has ALREADY committed to these positions. Any critique or defense mu
 ${sections.join('\n\n')}
 === END UPSTREAM CONTEXT ===
 `;
-}
-
-/**
- * Custom error class for AI response parsing failures.
- * Provides user-friendly messages while preserving technical details for debugging.
- */
-class AIResponseParseError extends Error {
-  public readonly isRetryable: boolean;
-
-  constructor(message: string, public readonly rawResponse: string, isRetryable = true) {
-    super(message);
-    this.name = 'AIResponseParseError';
-    this.isRetryable = isRetryable;
-  }
-}
-
-/**
- * Maximum number of automatic retries for failed API calls.
- */
-const MAX_RETRIES = 2;
-
-/**
- * Delay between retries in milliseconds (increases with each retry).
- */
-const RETRY_DELAY_MS = 1000;
-
-/**
- * Safely parse JSON from an LLM response.
- * Handles markdown code fences, trailing commas, and provides user-friendly errors.
- */
-function parseJSON<T>(raw: string): T {
-  if (!raw || typeof raw !== 'string') {
-    throw new AIResponseParseError(
-      'The AI returned an empty response. Please try again.',
-      raw || ''
-    );
-  }
-
-  let cleaned = raw.trim();
-
-  // Strip markdown code fences
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  // Try to find JSON array or object in the response
-  if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) {
-    const match = cleaned.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-    if (match) {
-      cleaned = match[1];
-    } else {
-      // No JSON found - the AI returned plain text instead
-      console.warn('[parseJSON] AI returned plain text instead of JSON:', raw.substring(0, 200));
-      throw new AIResponseParseError(
-        'The AI returned an unexpected response format. Retrying...',
-        raw,
-        true // retryable
-      );
-    }
-  }
-
-  // Remove trailing commas before } or ]
-  cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
-
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch (parseError) {
-    // Log the actual error for debugging but show user-friendly message
-    console.error('[parseJSON] JSON parse failed:', parseError);
-    console.error('[parseJSON] Attempted to parse:', cleaned.substring(0, 500));
-    throw new AIResponseParseError(
-      'The AI response could not be processed. Retrying...',
-      raw,
-      true // retryable
-    );
-  }
-}
-
-/**
- * Helper to invoke the model and parse the JSON response with automatic retries.
- * Retries up to MAX_RETRIES times on parse failures before giving up.
- */
-async function invokeWithRetry<T>(
-  invoker: () => Promise<string>,
-  parser: (text: string) => T,
-  context: string // For logging
-): Promise<T> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const text = await invoker();
-      return parser(text);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      // Check if error is retryable
-      const isRetryable = error instanceof AIResponseParseError && error.isRetryable;
-      const attemptsLeft = MAX_RETRIES - attempt;
-
-      if (isRetryable && attemptsLeft > 0) {
-        console.warn(`[${context}] Attempt ${attempt + 1} failed, retrying (${attemptsLeft} attempts left)...`);
-        // Wait before retrying, with increasing delay
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
-        continue;
-      }
-
-      // No more retries or non-retryable error
-      break;
-    }
-  }
-
-  // All retries exhausted - throw user-friendly error
-  console.error(`[${context}] All ${MAX_RETRIES + 1} attempts failed`);
-  throw new AIResponseParseError(
-    'The AI could not generate a valid response after multiple attempts. Please try again later.',
-    lastError instanceof AIResponseParseError ? lastError.rawResponse : '',
-    false // not retryable
-  );
 }
 
 // =============================================================================
@@ -264,7 +164,7 @@ ${pitch}
 
 Remember: Output ONLY a JSON array. Start with [ and end with ]`;
 
-  const model = getModel();
+  const model = getModel(true);
   const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
@@ -354,7 +254,7 @@ ${point.critique.reasoning}
 
 Remember: Output ONLY a JSON object. Start with { and end with }`;
 
-  const model = getModel();
+  const model = getModel(true);
   const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
@@ -479,7 +379,7 @@ ${point.defense.source ? `Evidence: ${point.defense.source}` : 'Evidence: None p
 
 Remember: Output ONLY a JSON object. Start with { and end with }`;
 
-  const model = getModel();
+  const model = getModel(true);
   const langfuseHandler = getLangfuseCallback(sessionId);
   const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
 
@@ -626,4 +526,272 @@ Synthesize these failures into a single Gap Report. Output JSON only.`;
       ? gapReport.hypotheses
       : [],
   };
+}
+
+// =============================================================================
+// FRAMEWORK-AWARE AGENT FUNCTIONS
+// =============================================================================
+
+/**
+ * Build upstream debate context using framework's dependency graph and context builder.
+ */
+function buildUpstreamDebateContextForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  gauntletLenses?: Record<string, GauntletLensState>
+): string {
+  const upstreamSteps = framework.upstreamDependencies[stepId] || [];
+  const lenses = gauntletLenses || manifest.gauntlet_lenses;
+  if (!upstreamSteps.length || !lenses) return '';
+
+  const sections: string[] = [];
+  const stepMap = new Map(framework.steps.map(s => [s.id, s]));
+
+  for (const upstreamId of upstreamSteps) {
+    const upstreamState = lenses[upstreamId] as GauntletLensState | undefined;
+    if (!upstreamState || upstreamState.status !== 'resolved') continue;
+
+    const resolvedText = upstreamState.userEdit || upstreamState.proposal || '';
+    if (!resolvedText.trim()) continue;
+
+    const step = stepMap.get(upstreamId);
+    const title = step?.title?.toUpperCase() || upstreamId.toUpperCase();
+    sections.push(`**COMMITTED ${title} DECISION:**\n${resolvedText}`);
+  }
+
+  if (!sections.length) return '';
+
+  return `\n=== UPSTREAM COMMITTED DECISIONS ===\nThe founder has ALREADY committed to these positions. Any critique or defense must be CONSISTENT with these prior decisions.\n\n${sections.join('\n\n')}\n=== END UPSTREAM CONTEXT ===\n`;
+}
+
+/**
+ * Framework-aware critique generation.
+ */
+export async function generateCritiquePointsForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  userProposal: string,
+  pitch: string,
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<DebatePoint[]> {
+  const step = framework.steps.find(s => s.id === stepId);
+  const stepProtocol = framework.stepProtocols[stepId];
+  if (!step || !stepProtocol) {
+    throw new Error(`Step "${stepId}" not found in framework "${framework.id}"`);
+  }
+
+  const context = buildContext(manifest);
+  const upstreamContext = buildUpstreamDebateContextForFramework(framework, stepId, manifest, gauntletLenses);
+
+  const skepticRole = framework.agentRoles.find(r => r.id === 'skeptic');
+  const baseSkepticPrompt = skepticRole
+    ? await getPrompt(getStepPromptName(framework, stepId, 'skeptic-system'), skepticRole.systemPrompt)
+    : await getPrompt('gauntlet-skeptic-system', FALLBACK_GAUNTLET_SKEPTIC_SYSTEM);
+
+  const lensProtocol = await getPrompt(
+    getStepPromptName(framework, stepId, 'skeptic'),
+    stepProtocol.agentProtocols.skeptic || ''
+  );
+
+  const systemPrompt = `${baseSkepticPrompt}\n\n=== STEP CONTEXT: ${step.title.toUpperCase()} (${step.subtitle}) ===\nAnalyze the User's Proposal for the ${step.title} step.\n\n${context}\n${upstreamContext}\n\n=== STEP-SPECIFIC PROTOCOL ===\n${lensProtocol}\n=== END STEP PROTOCOL ===`;
+
+  const userMessage = `USER'S PROPOSAL:\n${userProposal}\n\nFOUNDER'S PITCH:\n${pitch}\n\nRemember: Output ONLY a JSON array. Start with [ and end with ]`;
+
+  const model = getModel(true);
+  const langfuseHandler = getLangfuseCallback(sessionId);
+  const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
+
+  const rawPoints = await invokeWithRetry<CritiquePointRaw[]>(
+    async () => {
+      const response = await model.invoke(
+        [new SystemMessage(systemPrompt), new HumanMessage(userMessage)],
+        { callbacks }
+      );
+      return typeof response.content === 'string'
+        ? response.content
+        : Array.isArray(response.content)
+          ? (response.content[0] as any).text
+          : '';
+    },
+    (text) => parseJSON<CritiquePointRaw[]>(text),
+    `generateCritiquePointsForFramework:${framework.id}/${stepId}`
+  );
+
+  return rawPoints.slice(0, 5).map((p, idx) => ({
+    id: `${stepId}-${Date.now()}-${idx}`,
+    lensId: stepId,
+    critique: {
+      claim: p.claim || 'Unspecified critique',
+      reasoning: p.reasoning || '',
+      severity: (['high', 'medium', 'low'].includes(p.severity) ? p.severity : 'medium') as Severity,
+      source: p.source,
+    },
+  }));
+}
+
+/**
+ * Framework-aware defense generation.
+ */
+export async function generateDefenseForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  userProposal: string,
+  pitch: string,
+  point: DebatePoint,
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<DebatePoint> {
+  const step = framework.steps.find(s => s.id === stepId);
+  const stepProtocol = framework.stepProtocols[stepId];
+  if (!step || !stepProtocol) {
+    throw new Error(`Step "${stepId}" not found in framework "${framework.id}"`);
+  }
+
+  const context = buildContext(manifest);
+  const upstreamContext = buildUpstreamDebateContextForFramework(framework, stepId, manifest, gauntletLenses);
+
+  const visionaryRole = framework.agentRoles.find(r => r.id === 'visionary');
+  const baseVisionaryPrompt = visionaryRole
+    ? await getPrompt(getStepPromptName(framework, stepId, 'visionary-system'), visionaryRole.systemPrompt)
+    : await getPrompt('gauntlet-visionary-system', FALLBACK_GAUNTLET_VISIONARY_SYSTEM);
+
+  const lensProtocol = await getPrompt(
+    getStepPromptName(framework, stepId, 'visionary'),
+    stepProtocol.agentProtocols.visionary || ''
+  );
+
+  const systemPrompt = `${baseVisionaryPrompt}\n\n=== STEP CONTEXT: ${step.title.toUpperCase()} (${step.subtitle}) ===\nDefend against this SPECIFIC critique regarding ${step.title}.\n\n${context}\n${upstreamContext}\n\n=== STEP-SPECIFIC PROTOCOL ===\n${lensProtocol}\n=== END STEP PROTOCOL ===`;
+
+  const userMessage = `USER'S PROPOSAL:\n${userProposal}\n\nFOUNDER'S PITCH:\n${pitch}\n\n**The Attack** (Severity: ${point.critique.severity}):\n"${point.critique.claim}"\n${point.critique.reasoning}\n\nRemember: Output ONLY a JSON object. Start with { and end with }`;
+
+  const model = getModel(true);
+  const langfuseHandler = getLangfuseCallback(sessionId);
+  const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
+
+  const defense = await invokeWithRetry<DefenseRaw>(
+    async () => {
+      const response = await model.invoke(
+        [new SystemMessage(systemPrompt), new HumanMessage(userMessage)],
+        { callbacks }
+      );
+      return typeof response.content === 'string'
+        ? response.content
+        : Array.isArray(response.content)
+          ? (response.content[0] as any).text
+          : '';
+    },
+    (text) => parseJSON<DefenseRaw>(text),
+    `generateDefenseForFramework:${point.id}`
+  );
+
+  return {
+    ...point,
+    defense: {
+      rebuttal: defense.rebuttal || 'No rebuttal provided',
+      reasoning: defense.reasoning || '',
+      source: defense.source,
+    },
+  };
+}
+
+/**
+ * Generate defenses for all points using framework-aware logic.
+ */
+export async function generateAllDefensesForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  userProposal: string,
+  pitch: string,
+  points: DebatePoint[],
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<DebatePoint[]> {
+  return Promise.all(
+    points.map(point =>
+      generateDefenseForFramework(framework, stepId, manifest, userProposal, pitch, point, sessionId, gauntletLenses)
+    )
+  );
+}
+
+/**
+ * Framework-aware adjudication.
+ */
+export async function adjudicatePointForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  userProposal: string,
+  point: DebatePoint,
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<DebatePoint> {
+  if (!point.defense) return point;
+
+  const step = framework.steps.find(s => s.id === stepId);
+  if (!step) throw new Error(`Step "${stepId}" not found in framework "${framework.id}"`);
+
+  const context = buildContext(manifest);
+  const upstreamContext = buildUpstreamDebateContextForFramework(framework, stepId, manifest, gauntletLenses);
+
+  const juryRole = framework.agentRoles.find(r => r.id === 'jury');
+  const baseJuryPrompt = juryRole
+    ? await getPrompt(getStepPromptName(framework, stepId, 'jury-system'), juryRole.systemPrompt)
+    : await getPrompt('gauntlet-jury-system', FALLBACK_GAUNTLET_JURY_SYSTEM);
+
+  const systemPrompt = `${baseJuryPrompt}\n\n=== STEP CONTEXT: ${step.title.toUpperCase()} (${step.subtitle}) ===\nAdjudicate this specific point of contention for the ${step.title} step.\n\n${context}\n${upstreamContext}`;
+
+  const userMessage = `USER'S PROPOSAL:\n${userProposal}\n\n**The Attack** (Severity: ${point.critique.severity}):\nClaim: "${point.critique.claim}"\nReasoning: ${point.critique.reasoning}\n${point.critique.source ? `Source: ${point.critique.source}` : ''}\n\n**The Defense**:\nRebuttal: "${point.defense.rebuttal}"\nReasoning: ${point.defense.reasoning}\n${point.defense.source ? `Evidence: ${point.defense.source}` : 'Evidence: None provided'}\n\nRemember: Output ONLY a JSON object. Start with { and end with }`;
+
+  const model = getModel(true);
+  const langfuseHandler = getLangfuseCallback(sessionId);
+  const callbacks = langfuseHandler ? [langfuseHandler] : undefined;
+
+  const verdict = await invokeWithRetry<VerdictRaw>(
+    async () => {
+      const response = await model.invoke(
+        [new SystemMessage(systemPrompt), new HumanMessage(userMessage)],
+        { callbacks }
+      );
+      return typeof response.content === 'string'
+        ? response.content
+        : Array.isArray(response.content)
+          ? (response.content[0] as any).text
+          : '';
+    },
+    (text) => parseJSON<VerdictRaw>(text),
+    `adjudicatePointForFramework:${point.id}`
+  );
+
+  return {
+    ...point,
+    verdict: {
+      winner: verdict.winner === 'visionary' ? 'visionary' : 'skeptic',
+      reasoning: verdict.reasoning || 'No reasoning provided',
+      checklist: verdict.checklist,
+    },
+  };
+}
+
+/**
+ * Adjudicate all points using framework-aware logic.
+ */
+export async function adjudicateAllPointsForFramework(
+  framework: FrameworkDefinition,
+  stepId: string,
+  manifest: VentureManifest,
+  userProposal: string,
+  points: DebatePoint[],
+  sessionId?: string,
+  gauntletLenses?: Record<string, GauntletLensState>
+): Promise<DebatePoint[]> {
+  return Promise.all(
+    points.map(point =>
+      adjudicatePointForFramework(framework, stepId, manifest, userProposal, point, sessionId, gauntletLenses)
+    )
+  );
 }

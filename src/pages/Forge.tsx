@@ -1,12 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, Sparkles, ArrowRight, Save, Lightbulb, Zap, Clock, Target, Truck, Eye, Users, ShieldCheck } from 'lucide-react';
+import { Loader2, Sparkles, ArrowRight, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProjectManifest } from '@/hooks/useProjectManifest';
 import { useInflation } from '@/hooks/useInflation';
-import { cn } from '@/lib/utils';
-
-
 
 export default function Forge() {
   const { id } = useParams<{ id: string }>();
@@ -114,11 +111,11 @@ export default function Forge() {
     }
   };
 
-  // Proceed to Gauntlet
-  const handleProceedToGauntlet = async () => {
+  // Proceed to framework selection
+  const handleProceedToFrameworks = async () => {
     const projectId = await handleSave();
     if (projectId) {
-      navigate(`/gauntlet/${projectId}`);
+      navigate(`/frameworks/${projectId}`);
     }
   };
 
@@ -176,12 +173,12 @@ export default function Forge() {
             </Button>
             <Button
               size="sm"
-              onClick={handleProceedToGauntlet}
+              onClick={handleProceedToFrameworks}
               disabled={!rawText.trim() || rawText.trim().length < 20 || isSaving}
               className="bg-cyan-600 hover:bg-cyan-500"
-              title="Lock this idea and begin rigorous Thiel-based analysis"
+              title="Save and choose analysis frameworks"
             >
-              Commit & Analyze
+              Commit & Continue
               <ArrowRight className="w-4 h-4 ml-1.5" />
             </Button>
           </div>

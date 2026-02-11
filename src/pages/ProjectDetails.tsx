@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft, Loader2, Swords, Shield,
   Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
   AlertTriangle, RotateCcw,
   ScrollText, Building2, MessageSquare,
+  Lightbulb, TrendingUp, Brain, Rocket, Search, Award, Flame,
+  Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -16,10 +18,13 @@ import { EditableField } from "@/components/EditableField";
 import { DebateTable } from "@/components/DebateTable";
 import { LENS_CONFIGS, type LensId } from "@/lib/agents/lens-protocols";
 import { LENS_ORDER } from '@/types/lenses';
-import { getDirtyLenses, isVentureConsistent, type DirtyLens } from "@/lib/dirty-state";
+import { getDirtyLenses, getDirtyLensesForFramework, type DirtyLens } from "@/lib/dirty-state";
 import type { GauntletLensState, VentureManifest } from "@/types/database";
 import { getVentureStatus, VENTURE_STATUS_CONFIG } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { FrameworkRegistry } from "@/lib/frameworks/registry";
+import { useFramework } from "@/hooks/useFramework";
+import type { FrameworkDefinition, StepDefinition } from "@/lib/frameworks/types";
 
 type Tab = "project" | "gauntlet" | "competition" | "validation";
 
@@ -39,6 +44,15 @@ const LENS_ICONS: Record<LensId, React.ElementType> = {
   durability: ShieldCheck,
   secrets: Eye,
 };
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
+  Lightbulb, TrendingUp, Brain, Rocket, Search, Award, Flame,
+};
+
+function getIconForStep(iconName: string): React.ElementType {
+  return ICON_MAP[iconName] || Circle;
+}
 
 function getScoreColor(score: number): string {
   if (score >= 70) return 'text-green-400';
@@ -60,6 +74,10 @@ export default function ProjectDetails() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentProject, loadProject, updateManifest, updateTitle, isLoading, error } = useProjectManifest();
   const [showInconsistentWarning, setShowInconsistentWarning] = useState(false);
+  const [activeEvalFrameworkId, setActiveEvalFrameworkId] = useState<string>(FrameworkRegistry.getDefaultId());
+
+  // Hook must be called unconditionally (before any early returns)
+  const evalFramework = useFramework(activeEvalFrameworkId);
 
   const activeTab = (searchParams.get("tab") as Tab) || "gauntlet";
   const setActiveTab = (tab: Tab) => setSearchParams({ tab }, { replace: true });
@@ -67,6 +85,15 @@ export default function ProjectDetails() {
   useEffect(() => {
     if (id) loadProject(id);
   }, [id, loadProject]);
+
+  // Sync active framework with manifest when project loads
+  const manifestFrameworksRaw = currentProject?.manifest?.frameworks;
+  useEffect(() => {
+    if (!manifestFrameworksRaw || manifestFrameworksRaw.length === 0) return;
+    if (!manifestFrameworksRaw.includes(activeEvalFrameworkId)) {
+      setActiveEvalFrameworkId(manifestFrameworksRaw[0]);
+    }
+  }, [manifestFrameworksRaw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (
@@ -91,29 +118,58 @@ export default function ProjectDetails() {
   }
 
   const manifest = currentProject.manifest || {};
-  const lensStates = manifest.gauntlet_lenses || {};
-  const dirtyLenses = getDirtyLenses(manifest);
-  const isConsistent = isVentureConsistent(manifest);
-  const resolvedCount = LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').length;
+
+  // Multi-framework support
+  const manifestFrameworks = manifest.frameworks;
+  const frameworkIds = manifestFrameworks && manifestFrameworks.length > 0
+    ? manifestFrameworks
+    : [FrameworkRegistry.getDefaultId()];
+
+  // Get lens states for the active evaluation framework
+  const isDefaultFw = activeEvalFrameworkId === FrameworkRegistry.getDefaultId();
+
+  const lensStates = isDefaultFw
+    ? (manifest.gauntlet_lenses || {})
+    : (manifest.framework_data?.[activeEvalFrameworkId]?.gauntlet_lenses || {});
+
+  const frameworkData = manifest.framework_data?.[activeEvalFrameworkId];
+  const dirtyLenses = isDefaultFw
+    ? getDirtyLenses(manifest)
+    : frameworkData
+      ? getDirtyLensesForFramework(frameworkData, evalFramework, manifest.last_forge_edit)
+      : [];
+  const isConsistent = dirtyLenses.length === 0;
+  const resolvedCount = evalFramework.stepOrder.filter(l => lensStates[l]?.status === 'resolved').length;
   const earlyExitReason = manifest.early_exit_reason;
   const ventureStatus = getVentureStatus(currentProject);
   const statusConfig = VENTURE_STATUS_CONFIG[ventureStatus];
   const getLensScore = (s: GauntletLensState | undefined) => s?.lensScore ?? s?.kScore ?? 0;
   const averageLensScore = resolvedCount > 0
     ? Math.round(
-      LENS_ORDER
+      evalFramework.stepOrder
         .filter(l => getLensScore(lensStates[l]))
         .reduce((sum, l) => sum + getLensScore(lensStates[l]), 0)
       / resolvedCount
     )
     : 0;
 
+  // Build gauntlet URL with optional framework + step params
+  const gauntletUrl = (step?: string) => {
+    const params = new URLSearchParams();
+    if (activeEvalFrameworkId !== FrameworkRegistry.getDefaultId()) {
+      params.set('framework', activeEvalFrameworkId);
+    }
+    if (step) params.set('step', step);
+    const qs = params.toString();
+    return `/gauntlet/${id}${qs ? `?${qs}` : ''}`;
+  };
+
   // Handle entering the Gauntlet with dirty lenses
   const handleEnterGauntlet = () => {
     if (!isConsistent && resolvedCount > 0) {
       setShowInconsistentWarning(true);
     } else {
-      navigate(`/gauntlet/${id}`);
+      navigate(gauntletUrl());
     }
   };
 
@@ -187,7 +243,7 @@ export default function ProjectDetails() {
         {dirtyLenses.length > 0 && (
           <DirtyStateAlerts
             dirtyLenses={dirtyLenses}
-            onReDebate={(lensId) => navigate(`/gauntlet/${id}?step=${lensId}`)}
+            onReDebate={(lensId) => navigate(gauntletUrl(lensId))}
           />
         )}
 
@@ -220,15 +276,59 @@ export default function ProjectDetails() {
             <ProjectTab manifest={manifest} pitch={currentProject.pitch} onUpdateManifest={updateManifest} />
           )}
           {activeTab === "gauntlet" && (
-            <GauntletTab
-              lensStates={lensStates}
-              dirtyLenses={dirtyLenses}
-              resolvedCount={resolvedCount}
-              earlyExitReason={earlyExitReason}
-              isConsistent={isConsistent}
-              onEnterGauntlet={handleEnterGauntlet}
-              onReDebate={(lensId) => navigate(`/gauntlet/${id}?step=${lensId}`)}
-            />
+            <div className="space-y-4">
+              {/* Framework sub-tabs */}
+              {frameworkIds.length > 0 && (
+                <div className="flex items-center gap-1 border-b border-zinc-800/40 pb-0">
+                  {frameworkIds.map(fwId => {
+                    const fw = FrameworkRegistry.get(fwId);
+                    if (!fw) return null;
+                    const FwIcon = getIconForStep(fw.icon);
+                    const isActive = fwId === activeEvalFrameworkId;
+                    const fwLenses = fwId === FrameworkRegistry.getDefaultId()
+                      ? (manifest.gauntlet_lenses || {})
+                      : (manifest.framework_data?.[fwId]?.gauntlet_lenses || {});
+                    const fwDef = FrameworkRegistry.get(fwId);
+                    const fwResolved = fwDef
+                      ? fwDef.stepOrder.filter(s => fwLenses[s]?.status === 'resolved').length
+                      : 0;
+                    return (
+                      <button
+                        key={fwId}
+                        onClick={() => setActiveEvalFrameworkId(fwId)}
+                        className={cn(
+                          'flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                          isActive
+                            ? 'border-cyan-500 text-zinc-100'
+                            : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                        )}
+                      >
+                        <FwIcon className={cn('w-3.5 h-3.5', isActive ? fw.color : '')} />
+                        {fw.name}
+                        {fwDef && (
+                          <span className={cn(
+                            'text-[10px] ml-1',
+                            isActive ? 'text-zinc-400' : 'text-zinc-600'
+                          )}>
+                            {fwResolved}/{fwDef.stepOrder.length}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <GauntletTab
+                lensStates={lensStates}
+                dirtyLenses={dirtyLenses}
+                resolvedCount={resolvedCount}
+                earlyExitReason={earlyExitReason}
+                isConsistent={isConsistent}
+                onEnterGauntlet={handleEnterGauntlet}
+                onReDebate={(lensId) => navigate(gauntletUrl(lensId))}
+                framework={evalFramework}
+              />
+            </div>
           )}
           {activeTab === "competition" && <CompetitorMatrix />}
           {activeTab === "validation" && <InterviewLab />}
@@ -241,11 +341,11 @@ export default function ProjectDetails() {
           dirtyCount={dirtyLenses.length}
           onProceed={() => {
             setShowInconsistentWarning(false);
-            navigate(`/gauntlet/${id}`);
+            navigate(gauntletUrl());
           }}
           onReDebateFirst={(lensId) => {
             setShowInconsistentWarning(false);
-            navigate(`/gauntlet/${id}?step=${lensId}`);
+            navigate(gauntletUrl(lensId));
           }}
           dirtyLenses={dirtyLenses}
           onCancel={() => setShowInconsistentWarning(false)}
@@ -347,6 +447,7 @@ function GauntletTab({
   isConsistent,
   onEnterGauntlet,
   onReDebate,
+  framework,
 }: {
   lensStates: Record<string, GauntletLensState>;
   dirtyLenses: DirtyLens[];
@@ -354,10 +455,12 @@ function GauntletTab({
   earlyExitReason: string | undefined;
   isConsistent: boolean;
   onEnterGauntlet: () => void;
-  onReDebate: (lensId: LensId) => void;
+  onReDebate: (lensId: string) => void;
+  framework: FrameworkDefinition;
 }) {
   const dirtySet = new Set(dirtyLenses.map(d => d.lensId));
-  const isAllResolved = resolvedCount === 7;
+  const stepMap = new Map(framework.steps.map(s => [s.id, s]));
+  const isAllResolved = resolvedCount === framework.stepOrder.length;
 
   return (
     <div className="space-y-4">
@@ -366,7 +469,7 @@ function GauntletTab({
         <div>
           <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Gauntlet Report</h2>
           <p className="text-[11px] text-zinc-600 mt-0.5">
-            {resolvedCount} of 7 resolved
+            {resolvedCount} of {framework.stepOrder.length} resolved
           </p>
         </div>
         {!isAllResolved && !earlyExitReason && (
@@ -394,10 +497,11 @@ function GauntletTab({
 
       {/* Vertical Accordion */}
       <Accordion type="multiple" className="space-y-2">
-        {LENS_ORDER.map(lensId => {
-          const config = LENS_CONFIGS[lensId];
+        {framework.stepOrder.map(lensId => {
+          const config = stepMap.get(lensId);
+          if (!config) return null;
           const state = lensStates[lensId];
-          const Icon = LENS_ICONS[lensId];
+          const Icon = getIconForStep(config.icon);
           const isDirty = dirtySet.has(lensId);
           const score = state?.lensScore ?? state?.kScore ?? 0;
           const isResolved = state?.status === 'resolved';
@@ -543,7 +647,7 @@ function DirtyStateAlerts({
   onReDebate,
 }: {
   dirtyLenses: DirtyLens[];
-  onReDebate: (lensId: LensId) => void;
+  onReDebate: (lensId: string) => void;
 }) {
   // Group dirty lenses by their reason to show chain reactions
   const reasonGroups = dirtyLenses.reduce((acc, dl) => {
@@ -633,7 +737,7 @@ function InconsistentWarningModal({
   dirtyCount: number;
   dirtyLenses: DirtyLens[];
   onProceed: () => void;
-  onReDebateFirst: (lensId: LensId) => void;
+  onReDebateFirst: (lensId: string) => void;
   onCancel: () => void;
 }) {
   return (

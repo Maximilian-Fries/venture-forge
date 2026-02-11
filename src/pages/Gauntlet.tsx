@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Loader2, Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
   CheckCircle2, Circle, Play, Pencil, Swords, ArrowRight, ArrowLeft,
   Sparkles, AlertTriangle, RotateCcw, Shield, Lock, ChevronDown, FileText,
+  Lightbulb, TrendingUp, Brain, Rocket, Search, Award, Flame,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,29 +15,36 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useProjectManifest } from '@/hooks/useProjectManifest';
-import { LENS_CONFIGS, generateLensProposal, getLensSyncFields, LENS_UPSTREAM_DEPENDENCIES, type LensId, type GapReport, type LensProposalResult } from '@/lib/agents/lens-protocols';
+import { useFramework } from '@/hooks/useFramework';
+import { FrameworkRegistry } from '@/lib/frameworks/registry';
+import { LENS_CONFIGS, getLensSyncFields, generateStepProposal, type LensId, type GapReport, type LensProposalResult } from '@/lib/agents/lens-protocols';
 import { LENS_ORDER } from '@/types/lenses';
-import { generateCritiquePoints, generateAllDefenses, adjudicateAllPoints, shouldIssueGapReport, generateJuryGapReport } from '@/lib/agents/gauntlet-agents';
+import {
+  shouldIssueGapReport, generateJuryGapReport,
+  generateCritiquePointsForFramework, generateAllDefensesForFramework, adjudicateAllPointsForFramework,
+} from '@/lib/agents/gauntlet-agents';
+import { runCompetitorScout } from '@/lib/agents/competitor-agent';
 import { calculateLensScore } from '@/types/debate';
 import { DebateTable } from '@/components/DebateTable';
 import { PeopleLensForm } from '@/components/PeopleLensForm';
-import { getDirtyLenses, isLensDirty, getDownstreamLenses, getAffectedDownstreamLenses, calculateChainReaction, type DirtyLens, type ChainReaction } from '@/lib/dirty-state';
+import { getDirtyLenses, isLensDirty, getDownstreamLenses, getAffectedDownstreamLenses, calculateChainReaction, getDirtyLensesForFramework, getDownstreamSteps, getAffectedDownstreamSteps, calculateChainReactionForFramework, type DirtyLens, type ChainReaction } from '@/lib/dirty-state';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import type { GauntletLensState, GauntletLensStatus } from '@/types/database';
 import type { DebatePoint } from '@/types/debate';
+import type { FrameworkDefinition, StepDefinition } from '@/lib/frameworks/types';
 
 type RerunMode = 'full' | 'visionary-jury' | 'jury-only';
 
-// Icon mapping for lens configs
-const LENS_ICONS: Record<LensId, React.ElementType> = {
-  engineering: Zap,
-  timing: Clock,
-  monopoly: Target,
-  people: Users,
-  distribution: Truck,
-  durability: ShieldCheck,
-  secrets: Eye,
+// Icon mapping by name string → React component
+const ICON_MAP: Record<string, React.ElementType> = {
+  Zap, Clock, Target, Users, Truck, ShieldCheck, Eye,
+  Lightbulb, TrendingUp, Brain, Rocket, Search, Award, Flame,
+  Sparkles, FileText, Swords, Shield,
 };
+
+function getIconForStep(iconName: string): React.ElementType {
+  return ICON_MAP[iconName] || Circle;
+}
 
 // Step status icons
 const STATUS_ICONS: Record<GauntletLensStatus, React.ElementType> = {
@@ -57,10 +65,32 @@ export default function Gauntlet() {
   const [searchParams] = useSearchParams();
   const { currentProject, loadProject, updateManifest, resetGauntlet, isLoading: isProjectLoading } = useProjectManifest();
 
-  const stepParam = searchParams.get('step') as LensId | null;
-  const initialLens = stepParam && LENS_ORDER.includes(stepParam) ? stepParam : 'engineering';
+  // Multi-framework support
+  const manifestFrameworks = currentProject?.manifest?.frameworks;
+  const frameworkIds = manifestFrameworks && manifestFrameworks.length > 0
+    ? manifestFrameworks
+    : [FrameworkRegistry.getDefaultId()];
+  const hasMultipleFrameworks = frameworkIds.length > 1;
 
-  const [activeLens, setActiveLens] = useState<LensId>(initialLens);
+  const frameworkParam = searchParams.get('framework') as string | null;
+  const initialFramework = frameworkParam && frameworkIds.includes(frameworkParam) ? frameworkParam : frameworkIds[0];
+
+  const [activeFrameworkId, setActiveFrameworkId] = useState<string>(initialFramework);
+  // Keep activeFrameworkId in sync if the manifest frameworks change
+  useEffect(() => {
+    if (!frameworkIds.includes(activeFrameworkId)) {
+      setActiveFrameworkId(frameworkIds[0]);
+    }
+  }, [frameworkIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const framework = useFramework(activeFrameworkId);
+  const stepOrder = framework.stepOrder;
+  const stepMap = useMemo(() => new Map(framework.steps.map(s => [s.id, s])), [framework]);
+
+  const stepParam = searchParams.get('step') as string | null;
+  const initialLens = stepParam && stepOrder.includes(stepParam) ? stepParam : stepOrder[0];
+
+  const [activeLens, setActiveLens] = useState<string>(initialLens);
   const [lensStates, setLensStates] = useState<Record<string, GauntletLensState>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -74,20 +104,63 @@ export default function Gauntlet() {
   // Refs to avoid stale closures in async chains (defense/judging persist calls)
   const lensStatesRef = useRef<Record<string, GauntletLensState>>({});
   lensStatesRef.current = lensStates;
-  const activeLensRef = useRef<LensId>(activeLens);
+  const activeLensRef = useRef<string>(activeLens);
   activeLensRef.current = activeLens;
+  const activeFrameworkIdRef = useRef<string>(activeFrameworkId);
+  activeFrameworkIdRef.current = activeFrameworkId;
 
-  // Dependency checking: check if all upstream lenses are resolved
-  const getUnresolvedDependencies = useCallback((lensId: LensId): LensId[] => {
-    const dependencies = LENS_UPSTREAM_DEPENDENCIES[lensId] || [];
+  // Framework-aware lens state helpers: default framework uses top-level gauntlet_lenses
+  // for backward compatibility; other frameworks use framework_data[fwId]
+  const isDefaultFramework = activeFrameworkId === FrameworkRegistry.getDefaultId();
+
+  const getManifestLensStates = useCallback((): Record<string, GauntletLensState> | undefined => {
+    const manifest = currentProject?.manifest;
+    if (!manifest) return undefined;
+    if (isDefaultFramework) {
+      return manifest.gauntlet_lenses;
+    }
+    return manifest.framework_data?.[activeFrameworkId]?.gauntlet_lenses;
+  }, [currentProject, activeFrameworkId, isDefaultFramework]);
+
+  const getManifestActiveLens = useCallback((): string | undefined => {
+    const manifest = currentProject?.manifest;
+    if (!manifest) return undefined;
+    if (isDefaultFramework) {
+      return manifest.gauntlet_active_lens;
+    }
+    return manifest.framework_data?.[activeFrameworkId]?.gauntlet_active_lens;
+  }, [currentProject, activeFrameworkId, isDefaultFramework]);
+
+  const buildPersistPayload = useCallback((updated: Record<string, GauntletLensState>, activeStep: string, extra?: Record<string, unknown>) => {
+    if (isDefaultFramework) {
+      return { gauntlet_lenses: updated, gauntlet_active_lens: activeStep, ...extra };
+    }
+    const existingData = currentProject?.manifest?.framework_data || {};
+    const existingFw = existingData[activeFrameworkId] || { frameworkId: activeFrameworkId };
+    return {
+      framework_data: {
+        ...existingData,
+        [activeFrameworkId]: {
+          ...existingFw,
+          gauntlet_lenses: updated,
+          gauntlet_active_lens: activeStep,
+        },
+      },
+      ...extra,
+    };
+  }, [isDefaultFramework, activeFrameworkId, currentProject]);
+
+  // Dependency checking: check if all upstream steps are resolved
+  const getUnresolvedDependencies = useCallback((stepId: string): string[] => {
+    const dependencies = framework.upstreamDependencies[stepId] || [];
     return dependencies.filter(depId => {
       const depState = lensStates[depId];
       return !depState || depState.status !== 'resolved';
     });
-  }, [lensStates]);
+  }, [lensStates, framework]);
 
-  const canRunLens = useCallback((lensId: LensId): boolean => {
-    return getUnresolvedDependencies(lensId).length === 0;
+  const canRunLens = useCallback((stepId: string): boolean => {
+    return getUnresolvedDependencies(stepId).length === 0;
   }, [getUnresolvedDependencies]);
 
   // Dirty state tracking
@@ -100,10 +173,10 @@ export default function Gauntlet() {
 
   // Sync with step query param changes (e.g., from War Room heatmap clicks)
   useEffect(() => {
-    if (stepParam && LENS_ORDER.includes(stepParam)) {
+    if (stepParam && stepOrder.includes(stepParam)) {
       setActiveLens(stepParam);
     }
-  }, [stepParam]);
+  }, [stepParam, stepOrder]);
 
   // Reset local state and cancel in-flight chains when project ID changes
   useEffect(() => {
@@ -123,12 +196,12 @@ export default function Gauntlet() {
   const hasHydratedRef = useRef(false);
   useEffect(() => {
     if (!currentProject) return;
-    if (currentProject.manifest?.gauntlet_lenses) {
-      setLensStates(currentProject.manifest.gauntlet_lenses);
+    const manifestLenses = getManifestLensStates();
+    if (manifestLenses) {
+      setLensStates(manifestLenses);
       // Restore persisted gap report for the CURRENT active lens (not the manifest's)
-      const lenses = currentProject.manifest.gauntlet_lenses;
       const currentLens = activeLensRef.current;
-      const lensState = lenses[currentLens];
+      const lensState = manifestLenses[currentLens];
       if (lensState?.gapReport) {
         setGapReport(lensState.gapReport);
       }
@@ -137,11 +210,12 @@ export default function Gauntlet() {
     }
     // Only restore saved active lens on FIRST hydration or when there's no step param.
     // Skip if a debate chain is running (isProcessing) to prevent snapping the user away.
-    if (!hasHydratedRef.current && !stepParam && currentProject.manifest?.gauntlet_active_lens) {
-      setActiveLens(currentProject.manifest.gauntlet_active_lens as LensId);
+    const savedActiveLens = getManifestActiveLens();
+    if (!hasHydratedRef.current && !stepParam && savedActiveLens) {
+      setActiveLens(savedActiveLens);
     }
     hasHydratedRef.current = true;
-  }, [currentProject]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentProject, activeFrameworkId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get current lens state — defensive: ensure status is always valid
   const rawLensState = lensStates[activeLens];
@@ -169,9 +243,10 @@ export default function Gauntlet() {
   }, [activeLens, currentLensState]);
 
   // Persist lens state changes — uses refs to avoid stale closures in async chains
-  const persistLensState = useCallback(async (lensId: LensId, state: GauntletLensState) => {
+  const persistLensState = useCallback(async (lensId: string, state: GauntletLensState, extra?: Record<string, unknown>) => {
     console.log('[Gauntlet] persistLensState called:', {
       lensId,
+      framework: activeFrameworkIdRef.current,
       oldState: lensStatesRef.current[lensId]?.userEdit?.substring(0, 50),
       newState: state.userEdit?.substring(0, 50),
     });
@@ -180,12 +255,10 @@ export default function Gauntlet() {
     setLensStates(updated);
     console.log('[Gauntlet] setLensStates called with new state');
     // Use the ref for active lens so background chains don't hijack user navigation
-    await updateManifest({
-      gauntlet_lenses: updated,
-      gauntlet_active_lens: activeLensRef.current,
-    });
+    const payload = buildPersistPayload(updated, activeLensRef.current, extra);
+    await updateManifest(payload);
     console.log('[Gauntlet] updateManifest completed');
-  }, [updateManifest]);
+  }, [updateManifest, buildPersistPayload]);
 
   // Get pitch text from manifest
   const getPitch = (): string => {
@@ -243,11 +316,14 @@ export default function Gauntlet() {
     });
 
     try {
-      const result: LensProposalResult = await generateLensProposal(
+      const result: LensProposalResult = await generateStepProposal(
+        framework,
         activeLens,
         currentProject.manifest || {},
         getPitch(),
-        activeLens === 'people' ? currentProject.manifest?.gauntlet_people_input : undefined
+        activeLens === 'people' ? currentProject.manifest?.gauntlet_people_input : undefined,
+        undefined,
+        lensStates
       );
 
       console.log('[Gauntlet] API returned result:', result);
@@ -263,7 +339,7 @@ export default function Gauntlet() {
         : result.content;
 
       let newState: GauntletLensState;
-      if (activeLens === 'monopoly') {
+      if (framework.stepBehaviors?.[activeLens]?.multiSelect) {
         const wedges = content.split('---WEDGE---').map(w => w.trim()).filter(Boolean);
 
         // Ensure we have at least 3 wedges
@@ -371,12 +447,14 @@ export default function Gauntlet() {
     setIsProcessing(true);
     setError(null);
     try {
-      const points = await generateCritiquePoints(
+      const points = await generateCritiquePointsForFramework(
+        framework,
         activeLens,
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
         getPitch(),
-        state.sessionId
+        state.sessionId,
+        lensStates
       );
       if (s !== runSessionRef.current) return; // stale — abort
       const newState: GauntletLensState = {
@@ -406,13 +484,15 @@ export default function Gauntlet() {
       return;
     }
     try {
-      const defended = await generateAllDefenses(
+      const defended = await generateAllDefensesForFramework(
+        framework,
         activeLens,
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
         getPitch(),
         points,
-        state.sessionId
+        state.sessionId,
+        lensStates
       );
       if (s !== runSessionRef.current) return; // stale — abort
       const newState: GauntletLensState = {
@@ -442,12 +522,14 @@ export default function Gauntlet() {
       return;
     }
     try {
-      const judged = await adjudicateAllPoints(
+      const judged = await adjudicateAllPointsForFramework(
+        framework,
         activeLens,
         currentProject?.manifest || {},
         state.userEdit || state.proposal || '',
         points,
-        state.sessionId
+        state.sessionId,
+        lensStates
       );
       if (s !== runSessionRef.current) return; // stale — abort
 
@@ -478,10 +560,7 @@ export default function Gauntlet() {
           // Use refs to avoid stale closure
           const updated = { ...lensStatesRef.current, [activeLens]: gapState };
           setLensStates(updated);
-          await updateManifest({
-            gauntlet_lenses: updated,
-            gauntlet_active_lens: activeLensRef.current,
-          });
+          await updateManifest(buildPersistPayload(updated, activeLensRef.current));
 
           // Show the gap report UI
           setGapReport(juryGapReport);
@@ -510,11 +589,22 @@ export default function Gauntlet() {
       // Persist lens state AND sync fields in one update — use refs for fresh state
       const updated = { ...lensStatesRef.current, [activeLens]: newState };
       setLensStates(updated);
-      await updateManifest({
-        gauntlet_lenses: updated,
-        gauntlet_active_lens: activeLensRef.current,
-        ...syncFields,
-      });
+      await updateManifest(buildPersistPayload(updated, activeLensRef.current, syncFields));
+
+      // === COMPETITOR SCOUT: Fire-and-forget after market/monopoly step resolves ===
+      const scoutTriggerSteps = ['monopoly', 'market'];
+      if (scoutTriggerSteps.includes(activeLens) && currentProject?.manifest) {
+        const scoutManifest = { ...currentProject.manifest, ...syncFields };
+        runCompetitorScout(scoutManifest, state.sessionId)
+          .then(report => {
+            console.log('[Scout] Competitor report received:', report.competitors.length, 'competitors');
+            updateManifest({
+              competitor_report: report,
+              scout_competitors: report.competitors,
+            });
+          })
+          .catch(err => console.error('[Scout] failed:', err));
+      }
     } catch (err) {
       if (s !== runSessionRef.current) return;
       setError(err instanceof Error ? err.message : 'Judging phase failed');
@@ -529,16 +619,19 @@ export default function Gauntlet() {
     setIsProcessing(true);
     setError(null);
     try {
-      const result = await generateLensProposal(
-        'people',
+      const result = await generateStepProposal(
+        framework,
+        activeLens,
         currentProject?.manifest || {},
         getPitch(),
-        formattedInput
+        formattedInput,
+        undefined,
+        lensStates
       );
       // Neutral pipeline: all lenses return success
       const proposal = result.status === 'success' ? result.content : 'Draft could not be generated';
       const newState: GauntletLensState = { status: 'editing', proposal, userEdit: proposal };
-      await persistLensState('people', newState);
+      await persistLensState(activeLens, newState);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate proposal');
     } finally {
@@ -548,17 +641,17 @@ export default function Gauntlet() {
 
   // Navigate to next/prev lens
   const navigateLens = (direction: 'next' | 'prev') => {
-    const idx = LENS_ORDER.indexOf(activeLens);
-    if (direction === 'next' && idx < LENS_ORDER.length - 1) {
-      switchToLens(LENS_ORDER[idx + 1]);
+    const idx = stepOrder.indexOf(activeLens);
+    if (direction === 'next' && idx < stepOrder.length - 1) {
+      switchToLens(stepOrder[idx + 1]);
     } else if (direction === 'prev' && idx > 0) {
-      switchToLens(LENS_ORDER[idx - 1]);
+      switchToLens(stepOrder[idx - 1]);
     }
   };
 
   // Check completion
-  const resolvedCount = LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').length;
-  const isAllResolved = resolvedCount === 7;
+  const resolvedCount = stepOrder.filter(l => lensStates[l]?.status === 'resolved').length;
+  const isAllResolved = resolvedCount === stepOrder.length;
   const hasEarlyExit = !!currentProject?.manifest?.early_exit_reason;
   const canEnterWarRoom = isAllResolved || hasEarlyExit || resolvedCount > 0;
 
@@ -570,8 +663,8 @@ export default function Gauntlet() {
   };
 
   // Check for chain reaction when attempting to rerun a lens
-  const handleRerunRequest = (lensId: LensId, mode: RerunMode) => {
-    const chainReaction = calculateChainReaction(lensId, currentProject?.manifest || {});
+  const handleRerunRequest = (lensId: string, mode: RerunMode) => {
+    const chainReaction = calculateChainReactionForFramework(lensId, framework, lensStates);
     if (chainReaction.affectedLenses.length > 0) {
       setPendingRerunMode(mode);
       setChainReactionWarning(chainReaction);
@@ -581,7 +674,7 @@ export default function Gauntlet() {
   };
 
   // Execute the actual rerun with cascade invalidation
-  const executeRerun = async (lensId: LensId, mode: RerunMode) => {
+  const executeRerun = async (lensId: string, mode: RerunMode) => {
     const currentState = lensStates[lensId];
 
     if (mode === 'full') {
@@ -598,10 +691,7 @@ export default function Gauntlet() {
 
       const updated = { ...lensStates, [lensId]: newState };
       setLensStates(updated);
-      await updateManifest({
-        gauntlet_lenses: updated,
-        gauntlet_active_lens: lensId,
-      });
+      await updateManifest(buildPersistPayload(updated, lensId));
     } else if (mode === 'visionary-jury') {
       // Keep critique points, strip defense + verdict, re-run from defending
       const session = ++runSessionRef.current;
@@ -625,13 +715,10 @@ export default function Gauntlet() {
 
       const updated = { ...lensStates, [lensId]: newState };
       setLensStates(updated);
-      await updateManifest({
-        gauntlet_lenses: updated,
-        gauntlet_active_lens: lensId,
-      });
+      setIsProcessing(true);
+      await updateManifest(buildPersistPayload(updated, lensId));
 
       // Auto-start defense phase (which auto-chains to judging)
-      setIsProcessing(true);
       await handleRunDefense(newState, session);
     } else if (mode === 'jury-only') {
       // Keep critiques + defenses, strip verdict, re-run from judging
@@ -655,13 +742,10 @@ export default function Gauntlet() {
 
       const updated = { ...lensStates, [lensId]: newState };
       setLensStates(updated);
-      await updateManifest({
-        gauntlet_lenses: updated,
-        gauntlet_active_lens: lensId,
-      });
+      setIsProcessing(true);
+      await updateManifest(buildPersistPayload(updated, lensId));
 
       // Auto-start judging phase
-      setIsProcessing(true);
       await handleRunJudging(newState, session);
     }
 
@@ -676,9 +760,9 @@ export default function Gauntlet() {
     );
   }
 
-  const lensConfig = LENS_CONFIGS[activeLens];
-  const LensIcon = LENS_ICONS[activeLens];
-  const activeLensIdx = LENS_ORDER.indexOf(activeLens);
+  const lensConfig = stepMap.get(activeLens) || framework.steps[0];
+  const LensIcon = getIconForStep(lensConfig.icon);
+  const activeLensIdx = stepOrder.indexOf(activeLens);
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
@@ -695,11 +779,11 @@ export default function Gauntlet() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500">{resolvedCount}/7 lenses cleared</span>
+            <span className="text-xs text-zinc-500">{resolvedCount}/{stepOrder.length} lenses cleared</span>
             <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-amber-500 to-green-500 transition-all duration-500"
-                style={{ width: `${(resolvedCount / 7) * 100}%` }}
+                style={{ width: `${(resolvedCount / stepOrder.length) * 100}%` }}
               />
             </div>
             {resolvedCount > 0 && (
@@ -710,7 +794,7 @@ export default function Gauntlet() {
                   if (confirm('Reset all lens analysis? This will clear all lens data but keep your raw vision.')) {
                     await resetGauntlet();
                     setLensStates({});
-                    setActiveLens('engineering');
+                    setActiveLens(stepOrder[0]);
                   }
                 }}
                 className="text-xs text-zinc-500 hover:text-red-400"
@@ -738,6 +822,43 @@ export default function Gauntlet() {
           </div>
         </div>
       </header>
+
+      {/* Framework tabs — shown when multiple frameworks selected */}
+      {hasMultipleFrameworks && (
+        <div className="border-b border-zinc-800/60 bg-zinc-900/40 px-6 flex items-center gap-1">
+          {frameworkIds.map(fwId => {
+            const fw = FrameworkRegistry.get(fwId);
+            if (!fw) return null;
+            const FwIcon = getIconForStep(fw.icon);
+            const isActive = fwId === activeFrameworkId;
+            return (
+              <button
+                key={fwId}
+                onClick={() => {
+                  if (fwId !== activeFrameworkId) {
+                    hasHydratedRef.current = false;
+                    setActiveFrameworkId(fwId);
+                    setLensStates({});
+                    setGapReport(null);
+                    setPreviousGapReport(null);
+                    setError(null);
+                    setShowIdeaPanel(false);
+                  }
+                }}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                  isActive
+                    ? 'border-cyan-500 text-zinc-100'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                )}
+              >
+                <FwIcon className={cn('w-3.5 h-3.5', isActive ? fw.color : '')} />
+                {fw.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex-1 flex">
         {/* Left: Lens Navigation */}
@@ -768,9 +889,9 @@ export default function Gauntlet() {
 
           <div className="h-px bg-zinc-800/40 mx-4 mb-1" />
 
-          {LENS_ORDER.map((lensId, idx) => {
-            const config = LENS_CONFIGS[lensId];
-            const Icon = LENS_ICONS[lensId];
+          {stepOrder.map((lensId, idx) => {
+            const config = stepMap.get(lensId)!;
+            const Icon = getIconForStep(config.icon);
             const state = lensStates[lensId];
             const status: GauntletLensStatus = state?.status || 'pending';
             const StatusIcon = STATUS_ICONS[status];
@@ -849,12 +970,12 @@ export default function Gauntlet() {
             <div className="mt-auto px-4 py-3 border-t border-zinc-800/60">
               <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2">Scores</p>
               <div className="space-y-1">
-                {LENS_ORDER.filter(l => lensStates[l]?.status === 'resolved').map(lensId => {
+                {stepOrder.filter(l => lensStates[l]?.status === 'resolved').map(lensId => {
                   const s = lensStates[lensId];
                   const score = s?.lensScore ?? s?.kScore ?? 0;
                   return (
                     <div key={lensId} className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-500">{LENS_CONFIGS[lensId].title}</span>
+                      <span className="text-[11px] text-zinc-500">{stepMap.get(lensId)?.title || lensId}</span>
                       <span className={cn(
                         'text-[11px] font-mono',
                         score >= 70 ? 'text-green-400' :
@@ -1071,11 +1192,13 @@ export default function Gauntlet() {
                 lensId={activeLens}
                 isProcessing={isProcessing}
                 isRegenerating={isRegenerating}
-                onStart={activeLens === 'people' ? undefined : handleGenerateProposal}
-                onPeopleSubmit={activeLens === 'people' ? handlePeopleSubmit : undefined}
+                onStart={framework.stepBehaviors?.[activeLens]?.requiresInput ? undefined : handleGenerateProposal}
+                onPeopleSubmit={framework.stepBehaviors?.[activeLens]?.requiresInput ? handlePeopleSubmit : undefined}
                 peopleInput={currentProject?.manifest?.gauntlet_people_input}
                 unresolvedDependencies={getUnresolvedDependencies(activeLens)}
                 canRun={canRunLens(activeLens)}
+                stepConfig={lensConfig}
+                framework={framework}
               />
             )}
 
@@ -1101,7 +1224,7 @@ export default function Gauntlet() {
                 onEdit={handleUserEdit}
                 onApprove={handleApproveEdit}
                 onRegenerate={handleGenerateProposal}
-                showBackToSelection={activeLens === 'monopoly' && !!currentLensState.proposals?.length}
+                showBackToSelection={!!framework.stepBehaviors?.[activeLens]?.multiSelect && !!currentLensState.proposals?.length}
                 onBackToSelection={async () => {
                   const newState: GauntletLensState = {
                     ...currentLensState,
@@ -1145,10 +1268,11 @@ export default function Gauntlet() {
               <LensResolvedState
                 lensState={currentLensState}
                 lensConfig={lensConfig}
-                downstreamLenses={getDownstreamLenses(activeLens).filter(
+                downstreamLenses={getDownstreamSteps(activeLens, framework).filter(
                   l => lensStates[l]?.status === 'resolved'
                 )}
                 onRerun={(mode) => handleRerunRequest(activeLens, mode)}
+                framework={framework}
               />
             )}
           </div>
@@ -1166,12 +1290,12 @@ export default function Gauntlet() {
               Previous
             </Button>
             <span className="text-[11px] text-zinc-600">
-              {activeLensIdx + 1} of {LENS_ORDER.length}
+              {activeLensIdx + 1} of {stepOrder.length}
             </span>
             <Button
               variant="ghost"
               size="sm"
-              disabled={activeLensIdx === LENS_ORDER.length - 1}
+              disabled={activeLensIdx === stepOrder.length - 1}
               onClick={() => navigateLens('next')}
               className="text-zinc-400"
             >
@@ -1191,6 +1315,7 @@ export default function Gauntlet() {
           chainReaction={chainReactionWarning}
           onConfirm={() => executeRerun(chainReactionWarning.modifiedLens, pendingRerunMode)}
           onCancel={() => setChainReactionWarning(null)}
+          framework={framework}
         />
       )}
     </div>
@@ -1212,7 +1337,7 @@ function LensSelectingState({
   proposals: string[];
   onSelect: (p: string) => void;
   onCustom: () => void;
-  lensConfig: typeof LENS_CONFIGS[LensId];
+  lensConfig: StepDefinition;
   onRegenerate?: () => void;
   isRegenerating?: boolean;
 }) {
@@ -1305,26 +1430,33 @@ function LensPendingState({
   peopleInput,
   unresolvedDependencies = [],
   canRun = true,
+  stepConfig,
+  framework,
 }: {
-  lensId: LensId;
+  lensId: string;
   isProcessing: boolean;
   isRegenerating?: boolean;
   onStart?: () => void;
   onPeopleSubmit?: (input: string) => void;
   peopleInput?: string;
-  unresolvedDependencies?: LensId[];
+  unresolvedDependencies?: string[];
   canRun?: boolean;
+  stepConfig: StepDefinition;
+  framework: FrameworkDefinition;
 }) {
-  // People lens uses isProcessing (from handlePeopleSubmit)
-  // Other lenses use isRegenerating (from handleGenerateProposal)
-  const isGenerating = lensId === 'people' ? isProcessing : isRegenerating;
+  const behavior = framework.stepBehaviors?.[lensId];
+  const requiresInput = behavior?.requiresInput;
 
-  if (lensId === 'people' && onPeopleSubmit) {
-    // Show dependency blocker for People lens too
+  // People-like lens uses isProcessing (from handlePeopleSubmit)
+  // Other lenses use isRegenerating (from handleGenerateProposal)
+  const isGenerating = requiresInput ? isProcessing : isRegenerating;
+
+  if (requiresInput && onPeopleSubmit) {
+    // Show dependency blocker too
     if (!canRun && unresolvedDependencies.length > 0) {
       return (
         <div className="max-w-2xl mx-auto">
-          <DependencyBlocker lensId={lensId} unresolvedDependencies={unresolvedDependencies} />
+          <DependencyBlocker lensId={lensId} unresolvedDependencies={unresolvedDependencies} framework={framework} />
         </div>
       );
     }
@@ -1341,11 +1473,11 @@ function LensPendingState({
     );
   }
 
-  const config = LENS_CONFIGS[lensId];
+  const config = stepConfig;
 
   // Show dependency blocker if lens cannot run yet
   if (!canRun && unresolvedDependencies.length > 0) {
-    return <DependencyBlocker lensId={lensId} unresolvedDependencies={unresolvedDependencies} />;
+    return <DependencyBlocker lensId={lensId} unresolvedDependencies={unresolvedDependencies} framework={framework} />;
   }
 
   return (
@@ -1382,12 +1514,15 @@ function LensPendingState({
 function DependencyBlocker({
   lensId,
   unresolvedDependencies,
+  framework,
 }: {
-  lensId: LensId;
-  unresolvedDependencies: LensId[];
+  lensId: string;
+  unresolvedDependencies: string[];
+  framework: FrameworkDefinition;
 }) {
-  const config = LENS_CONFIGS[lensId];
-  const Icon = LENS_ICONS[lensId];
+  const fwStepMap = useMemo(() => new Map(framework.steps.map(s => [s.id, s])), [framework]);
+  const config = fwStepMap.get(lensId) || framework.steps[0];
+  const Icon = getIconForStep(config.icon);
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -1408,8 +1543,8 @@ function DependencyBlocker({
         </span>
         <div className="flex flex-wrap gap-2 justify-center">
           {unresolvedDependencies.map(depId => {
-            const depConfig = LENS_CONFIGS[depId];
-            const DepIcon = LENS_ICONS[depId];
+            const depConfig = fwStepMap.get(depId) || framework.steps[0];
+            const DepIcon = getIconForStep(depConfig.icon);
             return (
               <div
                 key={depId}
@@ -1637,11 +1772,13 @@ function LensResolvedState({
   lensConfig,
   onRerun,
   downstreamLenses,
+  framework,
 }: {
   lensState: GauntletLensState;
-  lensConfig: typeof LENS_CONFIGS[LensId];
+  lensConfig: StepDefinition;
   onRerun: (mode: RerunMode) => void;
-  downstreamLenses: LensId[];
+  downstreamLenses: string[];
+  framework: FrameworkDefinition;
 }) {
   const points = lensState.debatePoints || [];
   const score = lensState.lensScore ?? lensState.kScore ?? 0;
@@ -1731,7 +1868,10 @@ function LensResolvedState({
           <div>
             <span className="text-zinc-400">Changing this lens may invalidate:</span>
             <span className="ml-1 text-zinc-300">
-              {downstreamLenses.map(l => LENS_CONFIGS[l].title).join(', ')}
+              {downstreamLenses.map(l => {
+                const s = framework.steps.find(step => step.id === l);
+                return s?.title || l;
+              }).join(', ')}
             </span>
           </div>
         </div>
@@ -1826,12 +1966,15 @@ function ChainReactionModal({
   chainReaction,
   onConfirm,
   onCancel,
+  framework,
 }: {
   chainReaction: ChainReaction;
   onConfirm: () => void;
   onCancel: () => void;
+  framework: FrameworkDefinition;
 }) {
-  const modifiedConfig = LENS_CONFIGS[chainReaction.modifiedLens];
+  const fwStepMap = useMemo(() => new Map(framework.steps.map(s => [s.id, s])), [framework]);
+  const modifiedConfig = fwStepMap.get(chainReaction.modifiedLens) || framework.steps[0];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -1863,8 +2006,8 @@ function ChainReactionModal({
 
           <div className="space-y-2">
             {chainReaction.affectedLenses.map(({ lensId }) => {
-              const config = LENS_CONFIGS[lensId];
-              const Icon = LENS_ICONS[lensId];
+              const config = fwStepMap.get(lensId) || framework.steps[0];
+              const Icon = getIconForStep(config.icon);
               return (
                 <div key={lensId} className="flex items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-lg px-3 py-2">
                   <div className={cn('w-6 h-6 rounded-md flex items-center justify-center', config.bgColor)}>

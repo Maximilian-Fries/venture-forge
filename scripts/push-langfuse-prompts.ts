@@ -22,8 +22,19 @@ import {
   FALLBACK_GAUNTLET_SKEPTIC_SYSTEM,
   FALLBACK_GAUNTLET_JURY_SYSTEM,
   FALLBACK_JURY_GAP_REPORT_SYSTEM,
+  FALLBACK_COMPETITOR_SCOUT_SYSTEM,
   SKEPTIC_PROTOCOLS,
 } from '../src/lib/prompts/defaults';
+
+// YC Framework prompts
+import {
+  YC_PROPOSAL_PROMPTS,
+  YC_ADVOCATE_SYSTEM,
+  YC_SKEPTIC_SYSTEM,
+  YC_COMMITTEE_SYSTEM,
+  YC_ADVOCATE_PROTOCOLS,
+  YC_SKEPTIC_PROTOCOLS,
+} from '../src/lib/frameworks/yc/prompts';
 
 const langfuse = new Langfuse({
   secretKey: process.env.VITE_LANGFUSE_SECRET_KEY || 'sk-lf-143edc8e-585e-4ee0-ab38-f3baadcb03d7',
@@ -83,6 +94,12 @@ const PROMPTS = [
     content: FALLBACK_JURY_GAP_REPORT_SYSTEM,
     labels: ['gauntlet', 'jury', 'gap-report', 'production'],
   },
+  // Competitor Scout
+  {
+    name: 'competitor-scout-system',
+    content: FALLBACK_COMPETITOR_SCOUT_SYSTEM,
+    labels: ['scout', 'competitor', 'search-grounding', 'production'],
+  },
   // Lens-specific cartridge protocols (skeptic)
   {
     name: 'lens-protocol-skeptic-engineering',
@@ -99,6 +116,48 @@ const PROMPTS = [
     content: SKEPTIC_PROTOCOLS.distribution,
     labels: ['cartridge', 'skeptic', 'distribution', 'production'],
   },
+
+  // =========================================================================
+  // YC Application Framework
+  // =========================================================================
+
+  // YC system prompts
+  {
+    name: 'yc-advocate-system',
+    content: YC_ADVOCATE_SYSTEM,
+    labels: ['yc', 'advocate', 'system', 'production'],
+  },
+  {
+    name: 'yc-skeptic-system',
+    content: YC_SKEPTIC_SYSTEM,
+    labels: ['yc', 'skeptic', 'system', 'production'],
+  },
+  {
+    name: 'yc-committee-system',
+    content: YC_COMMITTEE_SYSTEM,
+    labels: ['yc', 'committee', 'system', 'production'],
+  },
+
+  // YC proposal prompts
+  ...Object.entries(YC_PROPOSAL_PROMPTS).map(([stepId, content]) => ({
+    name: `yc-proposal-${stepId}`,
+    content,
+    labels: ['yc', 'proposal', stepId, 'production'],
+  })),
+
+  // YC advocate protocols
+  ...Object.entries(YC_ADVOCATE_PROTOCOLS).map(([stepId, content]) => ({
+    name: `yc-protocol-visionary-${stepId}`,
+    content,
+    labels: ['yc', 'cartridge', 'advocate', stepId, 'production'],
+  })),
+
+  // YC skeptic protocols
+  ...Object.entries(YC_SKEPTIC_PROTOCOLS).map(([stepId, content]) => ({
+    name: `yc-protocol-skeptic-${stepId}`,
+    content,
+    labels: ['yc', 'cartridge', 'skeptic', stepId, 'production'],
+  })),
 ];
 
 async function pushPrompts() {

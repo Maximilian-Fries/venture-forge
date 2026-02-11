@@ -73,6 +73,22 @@ export interface Database {
   };
 }
 
+// Scout competitor types for AI-powered competitor detection
+export interface ScoutCompetitor {
+  name: string;
+  url?: string;
+  category: 'direct' | 'adjacent' | 'status_quo';
+  description: string;
+  weakness?: string;
+}
+
+export interface CompetitorReport {
+  competitors: ScoutCompetitor[];
+  redOceanAlert: boolean;
+  summary: string;
+  searchedAt?: string;
+}
+
 // Venture Manifest schema based on 01_manifest_architecture.md
 export interface VentureManifest {
   core_thesis?: {
@@ -103,6 +119,10 @@ export interface VentureManifest {
     weakness: string;
   }[];
 
+  // AI-powered competitor scout results
+  scout_competitors?: ScoutCompetitor[];
+  competitor_report?: CompetitorReport;
+
   // Customer validation interviews
   interviews?: {
     id: string;
@@ -128,6 +148,18 @@ export interface VentureManifest {
   gauntlet_lenses?: Record<string, GauntletLensState>;
   gauntlet_active_lens?: string; // Current lens being worked on
   gauntlet_people_input?: string; // Bio/resume for People lens
+
+  // Multi-framework support
+  frameworks?: string[];                                  // selected framework IDs
+  framework_data?: Record<string, FrameworkManifestData>; // per-framework state
+}
+
+export interface FrameworkManifestData {
+  frameworkId: string;
+  gauntlet_lenses?: Record<string, GauntletLensState>;
+  gauntlet_active_lens?: string;
+  gauntlet_people_input?: string; // Framework-specific people/team input
+  context_fields?: Record<string, unknown>; // framework-specific fields
 }
 
 export type GauntletLensStatus = 'pending' | 'proposing' | 'selecting' | 'editing' | 'attacking' | 'defending' | 'judging' | 'debating' | 'resolved';

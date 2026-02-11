@@ -4,9 +4,37 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { VentureManifest, ProjectManifest, LensDiscussion } from '@/types/database';
 import { getMockVenture } from '@/data/mockVentures';
+import { FrameworkRegistry } from '@/lib/frameworks/registry';
 
 // localStorage keys
 const LOCAL_PROJECTS_KEY = 'venture_local_projects';
+
+/**
+ * Lazy migration: when loading a project with gauntlet_lenses but no frameworks,
+ * auto-populate frameworks with the default framework ID.
+ * No Supabase migration needed since manifest is a JSONB column.
+ */
+function migrateManifest(project: ProjectManifest): ProjectManifest {
+  const manifest = project.manifest;
+  if (!manifest) return project;
+
+  // Already migrated
+  if (manifest.frameworks && manifest.frameworks.length > 0) return project;
+
+  // Has gauntlet data but no frameworks — assign default
+  if (manifest.gauntlet_lenses || manifest.gauntlet_active_lens) {
+    const defaultId = FrameworkRegistry.getDefaultId();
+    return {
+      ...project,
+      manifest: {
+        ...manifest,
+        frameworks: [defaultId],
+      },
+    };
+  }
+
+  return project;
+}
 
 // Helper to check if a project is mock or local
 export const isMockProject = (id: string) => id.startsWith('mock-');
@@ -166,7 +194,7 @@ export const useProjectManifest = create<ProjectManifestState>((set, get) => ({
         if (mockProject) {
           console.log('[useProjectManifest] Loading mock project:', projectId);
           set({
-            currentProject: mockProject as ProjectManifest,
+            currentProject: migrateManifest(mockProject as ProjectManifest),
             discussions: [],
             isLoading: false,
           });
@@ -182,7 +210,7 @@ export const useProjectManifest = create<ProjectManifestState>((set, get) => ({
         if (localProject) {
           console.log('[useProjectManifest] Loading local project:', projectId);
           set({
-            currentProject: localProject,
+            currentProject: migrateManifest(localProject),
             discussions: [],
             isLoading: false,
           });
@@ -210,7 +238,7 @@ export const useProjectManifest = create<ProjectManifestState>((set, get) => ({
       if (discussionsError) throw discussionsError;
 
       set({
-        currentProject: project as ProjectManifest,
+        currentProject: migrateManifest(project as ProjectManifest),
         discussions: (discussions || []) as LensDiscussion[],
         isLoading: false,
       });

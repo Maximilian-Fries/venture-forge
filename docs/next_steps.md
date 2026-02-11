@@ -586,10 +586,7 @@ The Gap Report is no longer a "Refusal to Write." It is now the Final Verdict.
 # 28. War Room Redesign (Visual Overhaul)
 **Objective**: Transform the War Room from an "unorganized space" into a high-fidelity, cohesive "Command Center" dashboard, improving information density and visual hierarchy.
 
-# 28. War Room Redesign (Visual Overhaul)
-**Objective**: Transform the War Room from an "unorganized space" into a high-fidelity, cohesive "Command Center" dashboard, improving information density and visual hierarchy.
-
-## 1. Revised Design Plan (Based on Sketches & Feedback)
+## 1. Revised Design Plan
 
 ### A. Global Layout & Hierarchy
 -   **Goal**: Full-width utilization, no wasted space on the right.

@@ -9,6 +9,7 @@
 
 import { Langfuse } from 'langfuse';
 import type { LensId } from '@/types/lenses';
+import type { FrameworkDefinition } from '@/lib/frameworks/types';
 import {
   FALLBACK_INFLATION_PROMPT,
   FALLBACK_GAUNTLET_SKEPTIC_SYSTEM,
@@ -20,6 +21,7 @@ import {
   FALLBACK_LENS_PROPOSAL_TIMING,
   FALLBACK_LENS_PROPOSAL_MONOPOLY,
   FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
+  FALLBACK_COMPETITOR_SCOUT_SYSTEM,
 } from '@/lib/prompts/defaults';
 
 // ============================================================================
@@ -152,6 +154,7 @@ export type PromptName =
   | 'gauntlet-visionary-system'
   | 'gauntlet-jury-system'
   | 'gauntlet-jury-gap-report'
+  | 'competitor-scout-system'
   | `lens-proposal-${LensId}`
   | `lens-protocol-visionary-${LensId}`
   | `lens-protocol-skeptic-${LensId}`
@@ -186,6 +189,28 @@ export function getLensJuryProtocolName(lensId: LensId): PromptName {
 }
 
 // ============================================================================
+// FRAMEWORK-AWARE PROMPT NAME HELPERS
+// ============================================================================
+
+/**
+ * Get the Langfuse prompt name for a framework step.
+ * Uses the framework's langfusePrefix for naming consistency.
+ *
+ * Examples:
+ *   getStepPromptName(thiel, 'engineering', 'proposal') → 'lens-proposal-engineering'
+ *   getStepPromptName(yc, 'traction', 'proposal') → 'yc-proposal-traction'
+ *   getStepPromptName(thiel, 'engineering', 'visionary') → 'lens-protocol-visionary-engineering'
+ *   getStepPromptName(thiel, 'engineering', 'skeptic-system') → 'lens-skeptic-system-engineering'
+ */
+export function getStepPromptName(framework: FrameworkDefinition, stepId: string, role: string): string {
+  const prefix = framework.langfusePrefix;
+  if (role === 'proposal') {
+    return `${prefix}-proposal-${stepId}`;
+  }
+  return `${prefix}-protocol-${role}-${stepId}`;
+}
+
+// ============================================================================
 // FALLBACK PROMPT CONSTANTS
 // Imported from @/lib/prompts/defaults for Single Source of Truth
 // ============================================================================
@@ -201,4 +226,5 @@ export {
   FALLBACK_LENS_PROPOSAL_TIMING,
   FALLBACK_LENS_PROPOSAL_MONOPOLY,
   FALLBACK_LENS_PROPOSAL_DISTRIBUTION,
+  FALLBACK_COMPETITOR_SCOUT_SYSTEM,
 };

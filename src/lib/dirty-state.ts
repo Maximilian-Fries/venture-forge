@@ -13,7 +13,8 @@
  */
 
 import type { LensId } from '@/types/lenses';
-import type { VentureManifest, GauntletLensState } from '@/types/database';
+import type { VentureManifest, GauntletLensState, FrameworkManifestData } from '@/types/database';
+import type { FrameworkDefinition } from '@/lib/frameworks/types';
 
 /**
  * Dependencies: if key lens changes, value lenses become dirty.
@@ -205,6 +206,99 @@ export function calculateChainReaction(
     affectedLenses: affected.map(lensId => ({
       lensId,
       reason: `Depends on ${modifiedLensId} which has changed`,
+    })),
+  };
+}
+
+// =============================================================================
+// FRAMEWORK-AWARE DIRTY STATE
+// =============================================================================
+
+/**
+ * Determine dirty steps for a specific framework's data and dependency graph.
+ */
+export function getDirtyLensesForFramework(
+  frameworkData: FrameworkManifestData,
+  framework: FrameworkDefinition,
+  lastForgeEdit?: string
+): DirtyLens[] {
+  const lenses = frameworkData.gauntlet_lenses;
+  if (!lenses) return [];
+
+  const dirty: DirtyLens[] = [];
+  const forgeEditTime = lastForgeEdit ? new Date(lastForgeEdit).getTime() : 0;
+
+  for (const [stepId, state] of Object.entries(lenses) as [string, GauntletLensState][]) {
+    if (state.status !== 'resolved' || !state.resolvedAt) continue;
+
+    const resolvedTime = new Date(state.resolvedAt).getTime();
+
+    // Check 1: Was the raw vision edited after this step was resolved?
+    if (forgeEditTime > resolvedTime) {
+      dirty.push({
+        lensId: stepId,
+        reason: 'Core idea was edited in The Forge after this step was resolved',
+        dirtyAt: lastForgeEdit!,
+      });
+      continue;
+    }
+
+    // Check 2: Was an upstream step re-resolved after this step was resolved?
+    for (const [upstreamId, downstreams] of Object.entries(framework.downstreamDependencies)) {
+      if (!downstreams.includes(stepId)) continue;
+
+      const upstreamState = lenses[upstreamId];
+      if (!upstreamState?.resolvedAt) continue;
+
+      const upstreamResolvedTime = new Date(upstreamState.resolvedAt).getTime();
+      if (upstreamResolvedTime > resolvedTime) {
+        dirty.push({
+          lensId: stepId,
+          reason: `Upstream step "${upstreamId}" was re-debated after this step was resolved`,
+          dirtyAt: upstreamState.resolvedAt,
+        });
+        break;
+      }
+    }
+  }
+
+  return dirty;
+}
+
+/**
+ * Get downstream steps for a given step within a framework.
+ */
+export function getDownstreamSteps(stepId: string, framework: FrameworkDefinition): string[] {
+  return framework.downstreamDependencies[stepId] || [];
+}
+
+/**
+ * Get affected downstream steps (resolved ones) for a framework.
+ */
+export function getAffectedDownstreamSteps(
+  stepId: string,
+  framework: FrameworkDefinition,
+  gauntletLenses: Record<string, GauntletLensState>
+): string[] {
+  const downstreams = framework.downstreamDependencies[stepId] || [];
+  return downstreams.filter(id => gauntletLenses[id]?.status === 'resolved');
+}
+
+/**
+ * Calculate chain reaction within a framework.
+ */
+export function calculateChainReactionForFramework(
+  modifiedStepId: string,
+  framework: FrameworkDefinition,
+  gauntletLenses: Record<string, GauntletLensState>
+): ChainReaction {
+  const affected = getAffectedDownstreamSteps(modifiedStepId, framework, gauntletLenses);
+
+  return {
+    modifiedLens: modifiedStepId,
+    affectedLenses: affected.map(stepId => ({
+      lensId: stepId,
+      reason: `Depends on ${modifiedStepId} which has changed`,
     })),
   };
 }

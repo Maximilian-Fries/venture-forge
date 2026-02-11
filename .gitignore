@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Implementation Plans
+docs/*_plan.md
+docs/next_steps.md
+docs/implementation_plan/
