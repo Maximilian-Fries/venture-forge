@@ -1,74 +1,42 @@
-# MonopolyMap
+# Venture Forge
 
-"But one of them caught our eye—the one in the center. He would neither go towards the feeding grounds at the edge of the ice, nor return to the colony. Shortly afterwards, we saw him heading straight towards the mountains, some 70 kilometers away.
-
-Dr. Ainley explained that even if he caught him and brought him back to the colony, he would immediately head right back for the mountains. But why?"
+> "But one of them caught our eye—the one in the center. He would neither go towards the feeding grounds at the edge of the ice, nor return to the colony. Shortly afterwards, we saw him heading straight towards the mountains, some 70 kilometers away.
+>
+> Dr. Ainley explained that even if he caught him and brought him back to the colony, he would immediately head right back for the mountains. But why?"
 
 **An Adversarial Venture Architect for Zero-to-One Ideas.**
 
-MonopolyMap is supposed to be a ruthless, adversarial **Venture Jury** designed to move entrepreneurs from "1 to N" (incremental progress) to "0 to 1" (vertical innovation). It acts as a filter for startup ideas, forcing them to meet the high reliability bars set by Peter Thiel (*Zero to One*) and Rob Fitzpatrick (*The Mom Test*).
+Venture Forge is a "Venture Jury" designed to move entrepreneurs from "1 to N" (incremental progress) to "0 to 1" (vertical innovation). It acts as a ruthless filter for startup ideas, forcing them to meet high reliability bars through adversarial debate with AI agents.
 
----
+## Purpose
 
-## 🧠 Core Philosophy
+Most startup ideas fail because they are "nice to have," solutions looking for a problem, or lack a localized monopoly strategy. Venture Forge prevents this by subjecting your idea to a gauntlet of specialized AI agents:
 
-Most startup ideas fail because they are "nice to have," "feature improvements," or solutions looking for a problem. MonopolyMap prevents this by enforcing:
+*   **The Visionary**: Optimistic, looking for the 10x potential and "Secret".
+*   **The Skeptic**: Ruthless, looking for fatal flaws and physics constraints.
+*   **The Jury**: The decider, synthesizing the debate into a final verdict.
 
-1.  **The Secret (Zero to One)**: We don't want to build "Uber for X." or Piss-Crystals. We seek monopolies built on proprietary technology, network effects, economies of scale, and branding.
-2.  **The Mom Test (Validation)**: We never ask "Would you use this?" We only care about past behavior. We hunt for "Bad Data" (compliments, fluff, hypotheticals) and eliminate it.
-3.  **The Wedge**: Start with a small, specific market and dominate it completely before expanding.
+The goal is not just feedback, but a rigorous stress-test to ensure your venture is built on a solid foundation.
 
-## 👥 The Venture Jury (Multi-Agent System)
+## Multi-Framework Evaluation
 
-Instead of a single AI, your idea faces a panel of specialized agents:
+Venture Forge supports multiple evaluation frameworks to stress-test your idea from different angles:
 
-*   **🔭 The Visionary**: Optimistic. Looks for the 10x potential, the "Secret," and the path to global scale. 
-*   **🛡️ The Skeptic**: Ruthless. Looks for errors, physics constraints, timing traps, and market apathy.
-*   **⚖️ The General Partner (GP) / Jury**: The Decider. Synthesizes the debate into a final "Monopoly Score" and investment memo.
+1.  **Thiel / "Zero to One" (Default)**: Focuses on vertical innovation, secrets, and monopoly wedges. Perfect for deep tech or contrarian ideas.
+2.  **Y Combinator**: Focuses on "Make something people want," growth, and traction. Ideal for consumer apps and rapid iteration.
 
-## 🔍 The 7 Strategic Lenses
+## Documentation
 
-Every venture is analyzed through five critical lenses. If you fail one, you don't pass Go.
+*   **[Technical Stack](docs/tech_stack.md)**: Detailed overview of the frameworks and tools used.
+*   **[Workflow Overview](docs/workflow_overview.md)**: Understanding the user journey from Ideation to the War Room.
+*   **[Mechanics](docs/mechanics.md)**: Deep dive into the scoring system and logic.
 
-| Lens | The Critical Question | Success Criteria |
-| :--- | :--- | :--- |
-| **Engineering** | Can you create breakthrough technology, not just incremental improvements? | Proprietary tech vs. Wrapper/Service business. |
-| **Timing** | Why now? Is now the right time to start this particular company? | Specific macro catalyst vs. General Trend. |
-| **Monopoly** | Can you dominate a market so small that every participant is identifiable? | Focused "Pond" vs. Broad "Ocean". |
-| **People** | Do you have the right team with unique founder-market fit? | Credentials/skills vs. Generic passion. |
-| **Distribution** | Do you have a way to deliver your product, not just create it? | Viral/Owned distribution vs. Rented/Paid ads. |
-| **Durability** | Will your market position be defensible 10-20 years into the future? | Network effects/Scaling vs. First Mover Advantage. |
-
-| **Secrets** | Have you identified a unique opportunity that others don't see? | Contrarian insight vs. Conventional wisdom. |
-
-## ⚙️ The Gauntlet Mechanics
-
-The system uses a **Point-Scoring Debate Engine** to evaluate ideas. It is not a simple "feedback" bot.
-- **The Fatal Flaw Rule**: Losing a single "High Severity" point causes immediate failure.
-- **The Gap Report**: A structural failure blocks progress until you pivot.
-- **Detailed Logic**: See [docs/mechanics.md](docs/mechanics.md) for the full scoring rules.
-
-
----
-
-## 🛠️ Technology Stack
-
-MonopolyMap is a modern, high-performance web application built with:
-
-*   **Framework**: [React](https://react.dev/) + [Vite](https://vitejs.dev/)
-*   **Language**: [TypeScript](https://www.typescriptlang.org/)
-*   **UI System**: [Shadcn/ui](https://ui.shadcn.com/) + [Tailwind CSS](https://tailwindcss.com/)
-*   **State Management**: [Zustand](https://github.com/pmndrs/zustand) + [TanStack Query](https://tanstack.com/query/latest)
-*   **Backend/Database**: [Supabase](https://supabase.com/)
-*   **AI Orchestration**: [LangChain](https://js.langchain.com/docs/) + [Gemini 1.5 Pro](https://deepmind.google/technologies/gemini/)
-*   **Observability**: [Langfuse](https://langfuse.com/) (Prompt Management & Tracing)
-
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 *   Node.js & npm (or bun/yarn)
-*   A Supabase project (for database)
+*   A Supabase project
 *   Google Gemini API Key
 *   Langfuse details (optional, for tracing)
 
@@ -91,7 +59,8 @@ MonopolyMap is a modern, high-performance web application built with:
     VITE_SUPABASE_URL=your_supabase_url
     VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
     VITE_GEMINI_API_KEY=your_gemini_key
-    # Optional
+    
+    # Optional - For Observability
     VITE_LANGFUSE_PUBLIC_KEY=...
     VITE_LANGFUSE_HOST=...
     ```
